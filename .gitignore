@@ -1,0 +1,52 @@
+# Python
+**/__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+**/dist/
+**/build/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Backend environment and runtime data
+app/.venv/
+app/.env
+app/data/
+app/logs/
+*.db
+*.sqlite3
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.agents
+
+# Local root environments retained during migration
+.venv/
+.env
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local-only files
+docker-compose.override.yml
+
+# AI logs — tracked structure, ignored content
+.ai-log/*.jsonl
+.ai-log/archive/
+
+/scripts/
+
+*.part
+*.zip.part
+.claude
+AGENTS.md
+CLAUDE.md

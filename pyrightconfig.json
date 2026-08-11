@@ -1,0 +1,11 @@
+{
+  "include": [
+    "app"
+  ],
+  "extraPaths": [
+    "./app",
+    "app"
+  ],
+  "venvPath": "app",
+  "venv": ".venv"
+}

@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #F5F0E8;
+    color: #1C1917;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  html.dark body {
+    background-color: #181512 !important;
+    color: #f5f0e8 !important;
+  }
+
+  h1, h2, .font-serif-heading {
+    font-family: 'Instrument Serif', 'Playfair Display', Georgia, serif;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #F4F1EA;
+}
+html.dark ::-webkit-scrollbar-track {
+  background: #181512;
+}
+::-webkit-scrollbar-thumb {
+  background: #D6D3D1;
+  border-radius: 9999px;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #789B86;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #789B86;
+}
+
+/* Light & Dark Glass / Bento Card Utilities */
+.classic-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E7E5E4;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02);
+  transition: all 0.3s ease;
+}
+
+html.dark .classic-card {
+  background: #25211e;
+  border: 1px solid #403933;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
+}
+
+.classic-card-hover {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.classic-card-hover:hover {
+  transform: translateY(-2px);
+  border-color: #789B86;
+  box-shadow: 0 10px 30px -10px rgba(67, 56, 202, 0.15);
+}
+
+html.dark .classic-card-hover:hover {
+  transform: translateY(-3px);
+  border-color: #789b86;
+  box-shadow: 0 10px 30px -12px rgba(49, 92, 73, 0.30);
+}
+
+/* Vertical Accent Line */
+.orange-accent-line {
+  border-left: 2px solid #789B86;
+}
+
+html.dark .orange-accent-line {
+  border-left: 2px solid #789B86;
+}
+
+/* Scroll Indicator Line Pulse */
+@keyframes scrollLine {
+  0% { transform: scaleY(0); transform-origin: top; }
+  50% { transform: scaleY(1); transform-origin: top; }
+  50.1% { transform: scaleY(1); transform-origin: bottom; }
+  100% { transform: scaleY(0); transform-origin: bottom; }
+}
+
+.animate-scroll-line {
+  animation: scrollLine 2.5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
