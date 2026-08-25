@@ -1,6 +1,5 @@
 import React, { useState } from 'react'
 import {
-  Users,
   Search,
   Shield,
   User,
@@ -11,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  UserX
+  UserX,
+  X
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -29,12 +29,14 @@ export const UserManagementTable = () => {
   const [newName, setNewName] = useState('')
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
-  const [newRole, setNewRole] = useState('user')
+  const [newRole, setNewRole] = useState('engineer')
 
-  const filteredUsers = usersList.filter((u) => {
+  const filteredUsers = (usersList || []).filter((u) => {
+    const name = u.display_name || u.name || ''
+    const email = u.email || ''
     const matchesSearch =
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase())
+      name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      email.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesRole = roleFilter === 'all' || u.role === roleFilter
     return matchesSearch && matchesRole
   })
@@ -45,16 +47,28 @@ export const UserManagementTable = () => {
     currentPage * pageSize
   )
 
-  const handleRoleToggle = (user) => {
-    toggleUserRole(user.id)
-    const newRoleName = user.role === 'admin' ? 'USER' : 'ADMIN'
-    addToast(`Updated ${user.name}'s role to ${newRoleName}`, 'info')
+  const handleRoleToggle = async (user) => {
+    const roleCycle = {
+      engineer: 'admin',
+      admin: 'engineer'
+    }
+    const nextRole = roleCycle[user.role] || 'engineer'
+    try {
+      await toggleUserRole(user.id, nextRole)
+      addToast(`Updated ${(user.display_name || user.email)} role to ${nextRole.toUpperCase()}`, 'info')
+    } catch (err) {
+      addToast(err.message || 'Failed to update role', 'error')
+    }
   }
 
-  const handleStatusToggle = (user) => {
-    toggleUserStatus(user.id)
-    const newStatus = user.status === 'active' ? 'SUSPENDED' : 'ACTIVE'
-    addToast(`Updated ${user.name}'s account status to ${newStatus}`, 'info')
+  const handleStatusToggle = async (user) => {
+    const nextStatus = !user.is_active
+    try {
+      await toggleUserStatus(user.id, nextStatus)
+      addToast(`Updated ${(user.display_name || user.email)} status to ${nextStatus ? 'ACTIVE' : 'SUSPENDED'}`, 'info')
+    } catch (err) {
+      addToast(err.message || 'Failed to update status', 'error')
+    }
   }
 
   const handleAddUser = async (e) => {
@@ -77,31 +91,33 @@ export const UserManagementTable = () => {
   }
 
   return (
-    <div className="space-y-6 animate-fadeIn">
+    <div className="space-y-6 font-mono animate-fadeIn">
       {/* Table Action Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-5 bg-white dark:bg-[#25211e]/95 rounded-3xl border border-stone-200 dark:border-[#403933] shadow-2xs">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-5 bg-white dark:bg-[#1C1A17] border-3 border-black shadow-[6px_6px_0px_0px_#000]">
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-stone-400 dark:text-[#847970] absolute left-4 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-black absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search users by name or email..."
+            placeholder="FILTER ACCOUNTS BY NAME / EMAIL..."
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value)
               setCurrentPage(1)
             }}
-            className="w-full bg-stone-50 dark:bg-[#181512] text-stone-950 dark:text-[#f3ece4] text-xs font-sans rounded-full pl-10 pr-4 py-2.5 border border-stone-200 dark:border-[#403933] focus:border-stone-950 dark:focus:border-[#789b86] outline-none"
+            className="w-full bg-[#F7F4EE] dark:bg-stone-900 text-black dark:text-white text-xs font-bold pl-10 pr-4 py-2.5 border-2 border-black shadow-[2px_2px_0px_0px_#000] uppercase outline-none"
           />
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 bg-stone-100 dark:bg-[#181512] p-1 rounded-full border border-stone-200 dark:border-[#403933] text-xs font-sans">
-            <Filter className="w-3.5 h-3.5 text-stone-500 dark:text-[#a99d92] ml-2" />
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1 bg-[#F7F4EE] dark:bg-stone-900 p-1 border-2 border-black text-xs">
+            <Filter className="w-3.5 h-3.5 text-stone-500 ml-1" />
             <button
               type="button"
               onClick={() => setRoleFilter('all')}
-              className={`px-3 py-1 rounded-full font-bold uppercase text-[10px] tracking-wider transition-all ${
-                roleFilter === 'all' ? 'bg-stone-950 dark:bg-[#332e2a] text-white dark:text-[#f3ece4]' : 'text-stone-600 dark:text-[#a99d92] hover:text-stone-950 dark:hover:text-stone-200'
+              className={`px-3 py-1 font-black uppercase text-[10px] tracking-wider transition-all cursor-pointer ${
+                roleFilter === 'all'
+                  ? 'bg-black text-white'
+                  : 'text-stone-700 dark:text-stone-300 hover:text-black'
               }`}
             >
               ALL
@@ -109,128 +125,139 @@ export const UserManagementTable = () => {
             <button
               type="button"
               onClick={() => setRoleFilter('admin')}
-              className={`px-3 py-1 rounded-full font-bold uppercase text-[10px] tracking-wider transition-all ${
-                roleFilter === 'admin' ? 'bg-stone-950 dark:bg-[#315c49]/18 text-white dark:text-[#a8c0b0] dark:border dark:border-[#315c49]/45' : 'text-stone-600 dark:text-[#a99d92] hover:text-stone-950 dark:hover:text-stone-200'
+              className={`px-3 py-1 font-black uppercase text-[10px] tracking-wider transition-all cursor-pointer ${
+                roleFilter === 'admin'
+                  ? 'bg-black text-[#FF5500]'
+                  : 'text-stone-700 dark:text-stone-300 hover:text-black'
               }`}
             >
               ADMINS
             </button>
             <button
               type="button"
-              onClick={() => setRoleFilter('user')}
-              className={`px-3 py-1 rounded-full font-bold uppercase text-[10px] tracking-wider transition-all ${
-                roleFilter === 'user' ? 'bg-stone-950 dark:bg-[#332e2a] text-white dark:text-[#f3ece4]' : 'text-stone-600 dark:text-[#a99d92] hover:text-stone-950 dark:hover:text-stone-200'
+              onClick={() => setRoleFilter('engineer')}
+              className={`px-3 py-1 font-black uppercase text-[10px] tracking-wider transition-all cursor-pointer ${
+                roleFilter === 'engineer'
+                  ? 'bg-black text-[#00D084]'
+                  : 'text-stone-700 dark:text-stone-300 hover:text-black'
               }`}
             >
-              USERS
+              ENGINEERS
             </button>
           </div>
 
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-stone-950 dark:bg-[#315c49] hover:bg-orange-700 dark:hover:bg-[#789b86] text-white dark:text-[#f3ece4] font-bold text-xs tracking-widest uppercase transition-all cursor-pointer shrink-0 shadow-sm"
+            className="flex items-center gap-2 px-5 py-2.5 bg-black hover:bg-[#FF5500] text-white hover:text-black font-black text-xs tracking-wider uppercase border-2 border-black shadow-[3px_3px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer shrink-0"
           >
             <UserPlus className="w-3.5 h-3.5" /> ADD USER
           </button>
         </div>
       </div>
 
-      {/* Dense Table */}
-      <div className="bg-white dark:bg-[#25211e]/95 rounded-3xl border border-stone-200 dark:border-[#403933] overflow-hidden shadow-2xs">
+      {/* Dense Brutalist Table */}
+      <div className="bg-white dark:bg-[#1C1A17] border-3 border-black shadow-[6px_6px_0px_0px_#000] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-stone-50 dark:bg-[#181512] text-stone-500 dark:text-[#a99d92] uppercase tracking-widest font-sans text-[10px] font-bold border-b border-stone-200 dark:border-[#403933]">
-                <th className="py-4 px-6">USER DETAILS</th>
-                <th className="py-4 px-6">ROLE</th>
-                <th className="py-4 px-6">STATUS</th>
-                <th className="py-4 px-6">REGISTERED</th>
-                <th className="py-4 px-6 text-right">PRIVILEGES & ACTIONS</th>
+              <tr className="bg-[#F7F4EE] dark:bg-stone-900 text-black dark:text-white uppercase tracking-wider text-[11px] font-black border-b-2 border-black">
+                <th className="py-3.5 px-6">USER DETAILS</th>
+                <th className="py-3.5 px-6">ROLE</th>
+                <th className="py-3.5 px-6">STATUS</th>
+                <th className="py-3.5 px-6">REGISTERED</th>
+                <th className="py-3.5 px-6 text-right">PRIVILEGES & ACTIONS</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100 dark:divide-[#403933]">
+            <tbody className="divide-y-2 divide-black/10">
               {paginatedUsers.length > 0 ? (
-                paginatedUsers.map((u) => (
-                  <tr key={u.id} className="hover:bg-stone-50/60 dark:hover:bg-stone-950/40 transition-colors">
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={u.avatar}
-                          alt={u.name}
-                          className="w-9 h-9 rounded-full object-cover border border-stone-200 dark:border-[#514841] shrink-0"
-                        />
-                        <div>
-                          <div className="font-bold text-stone-950 dark:text-[#f3ece4] text-sm">{u.name}</div>
-                          <div className="text-stone-500 dark:text-[#a99d92] font-mono text-[11px]">{u.email}</div>
+                paginatedUsers.map((u) => {
+                  const displayName = u.display_name || u.name || 'Anonymous User'
+                  const avatarUrl = u.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.email}`
+                  const isActive = u.is_active !== undefined ? u.is_active : u.status === 'active'
+                  const createdDate = u.created_at ? new Date(u.created_at).toLocaleDateString() : (u.created || 'N/A')
+
+                  return (
+                    <tr key={u.id} className="hover:bg-[#F7F4EE] dark:hover:bg-stone-900 transition-colors">
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={avatarUrl}
+                            alt={displayName}
+                            className="w-9 h-9 border border-black shrink-0 bg-stone-100"
+                          />
+                          <div>
+                            <div className="font-black text-black dark:text-white text-sm">{displayName}</div>
+                            <div className="text-stone-500 font-mono text-[11px]">{u.email}</div>
+                          </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="py-4 px-6">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-mono text-[10px] font-bold uppercase tracking-wider ${
-                          u.role === 'admin'
-                            ? 'bg-orange-50 dark:bg-[#315c49]/12 text-orange-700 dark:text-[#a8c0b0] border border-orange-200 dark:border-[#315c49]/45'
-                            : 'bg-stone-100 dark:bg-[#332e2a] text-stone-600 dark:text-[#a99d92] border border-stone-200 dark:border-[#514841]'
-                        }`}
-                      >
-                        {u.role === 'admin' ? <Shield className="w-3 h-3 text-orange-700 dark:text-[#789b86]" /> : <User className="w-3 h-3" />}
-                        {u.role}
-                      </span>
-                    </td>
-
-                    <td className="py-4 px-6">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase ${
-                          u.status === 'active'
-                            ? 'bg-emerald-50 dark:bg-[#315c49]/18 text-emerald-700 dark:text-[#789b86] border border-emerald-200 dark:border-[#456f5b]/45'
-                            : 'bg-rose-50 dark:bg-[#6b3e3e]/22 text-rose-700 dark:text-[#c98d89] border border-rose-200 dark:border-[#6b3e3e]/50'
-                        }`}
-                      >
-                        {u.status === 'active' ? (
-                          <CheckCircle2 className="w-3 h-3 text-emerald-700 dark:text-[#789b86]" />
-                        ) : (
-                          <AlertTriangle className="w-3 h-3 text-rose-700 dark:text-[#c98d89]" />
-                        )}
-                        {u.status}
-                      </span>
-                    </td>
-
-                    <td className="py-4 px-6 font-mono text-stone-500 dark:text-[#a99d92] text-xs">
-                      {u.created}
-                    </td>
-
-                    <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleRoleToggle(u)}
-                          className="px-3.5 py-1.5 rounded-full bg-stone-100 dark:bg-[#332e2a] hover:bg-stone-950 dark:hover:bg-[#433b35] text-stone-800 dark:text-[#c8bbb0] hover:text-white border border-stone-300 dark:border-[#514841] text-[10px] font-bold tracking-wider uppercase transition-all cursor-pointer flex items-center gap-1"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5 text-orange-700 dark:text-[#789b86]" /> TOGGLE ROLE
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleStatusToggle(u)}
-                          className={`px-3.5 py-1.5 rounded-full border text-[10px] font-bold tracking-wider uppercase transition-all cursor-pointer flex items-center gap-1 ${
-                            u.status === 'active'
-                              ? 'bg-rose-50 dark:bg-[#3b2424]/60 border-rose-200 dark:border-[#593534] text-rose-700 dark:text-[#c98d89] hover:bg-rose-700 hover:text-white'
-                              : 'bg-emerald-50 dark:bg-[#1d352b]/55 border-emerald-200 dark:border-[#294c3e] text-emerald-700 dark:text-[#789b86] hover:bg-emerald-700 hover:text-white'
+                      <td className="py-4 px-6">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-black uppercase border ${
+                            u.role === 'admin'
+                              ? 'bg-[#FF5500] text-black border-black shadow-[1px_1px_0px_0px_#000]'
+                              : 'bg-white dark:bg-stone-800 text-black dark:text-white border-black'
                           }`}
                         >
-                          <UserX className="w-3.5 h-3.5" />
-                          {u.status === 'active' ? 'SUSPEND' : 'ACTIVATE'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          {u.role === 'admin' ? <Shield className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                          {u.role}
+                        </span>
+                      </td>
+
+                      <td className="py-4 px-6">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-black uppercase border ${
+                            isActive
+                              ? 'bg-[#00D084] text-black border-black shadow-[1px_1px_0px_0px_#000]'
+                              : 'bg-red-100 text-red-900 border-red-600'
+                          }`}
+                        >
+                          {isActive ? (
+                            <CheckCircle2 className="w-3 h-3" />
+                          ) : (
+                            <AlertTriangle className="w-3 h-3" />
+                          )}
+                          {isActive ? 'ACTIVE' : 'SUSPENDED'}
+                        </span>
+                      </td>
+
+                      <td className="py-4 px-6 font-bold text-stone-600 dark:text-stone-400 text-xs">
+                        {createdDate}
+                      </td>
+
+                      <td className="py-4 px-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRoleToggle(u)}
+                            className="px-3 py-1.5 bg-[#F7F4EE] hover:bg-black hover:text-white text-black text-[10px] font-black uppercase border border-black shadow-[2px_2px_0px_0px_#000] transition-all cursor-pointer flex items-center gap-1"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 text-[#FF5500]" /> CHANGE ROLE
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleStatusToggle(u)}
+                            className={`px-3 py-1.5 border text-[10px] font-black uppercase transition-all cursor-pointer flex items-center gap-1 shadow-[2px_2px_0px_0px_#000] ${
+                              isActive
+                                ? 'bg-red-100 border-red-600 text-red-900 hover:bg-red-600 hover:text-white'
+                                : 'bg-[#00D084] border-black text-black hover:bg-black hover:text-white'
+                            }`}
+                          >
+                            <UserX className="w-3.5 h-3.5" />
+                            {isActive ? 'SUSPEND' : 'ACTIVATE'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
               ) : (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-stone-500 dark:text-[#a99d92] text-sm">
-                    No users matching filter criteria found.
+                  <td colSpan={5} className="py-8 text-center text-stone-500 text-sm">
+                    [NO USERS MATCHING FILTER CRITERIA]
                   </td>
                 </tr>
               )}
@@ -239,9 +266,9 @@ export const UserManagementTable = () => {
         </div>
 
         {/* Pagination Footer */}
-        <div className="p-4 bg-stone-50 dark:bg-[#181512] border-t border-stone-200 dark:border-[#403933] flex items-center justify-between text-xs text-stone-500 dark:text-[#a99d92]">
+        <div className="p-4 bg-[#F7F4EE] dark:bg-stone-900 border-t-2 border-black flex items-center justify-between text-xs text-stone-600 dark:text-stone-400">
           <div>
-            Showing <span className="font-bold text-stone-950 dark:text-[#f3ece4]">{filteredUsers.length}</span> total system accounts
+            SHOWING <span className="font-black text-black dark:text-white">{filteredUsers.length}</span> TOTAL SYSTEM ACCOUNTS
           </div>
 
           <div className="flex items-center gap-2">
@@ -249,18 +276,18 @@ export const UserManagementTable = () => {
               type="button"
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(currentPage - 1)}
-              className="p-1.5 rounded-full bg-white dark:bg-[#25211e] border border-stone-200 dark:border-[#403933] hover:bg-stone-100 dark:hover:bg-[#38322d] disabled:opacity-40 text-stone-800 dark:text-[#ded3c8] transition-colors cursor-pointer"
+              className="p-1.5 bg-white dark:bg-stone-800 border border-black hover:bg-black hover:text-white disabled:opacity-30 text-black dark:text-white transition-colors cursor-pointer shadow-[1px_1px_0px_0px_#000]"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="font-mono">
-              Page {currentPage} of {totalPages}
+            <span className="font-bold">
+              PAGE {currentPage} OF {totalPages}
             </span>
             <button
               type="button"
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(currentPage + 1)}
-              className="p-1.5 rounded-full bg-white dark:bg-[#25211e] border border-stone-200 dark:border-[#403933] hover:bg-stone-100 dark:hover:bg-[#38322d] disabled:opacity-40 text-stone-800 dark:text-[#ded3c8] transition-colors cursor-pointer"
+              className="p-1.5 bg-white dark:bg-stone-800 border border-black hover:bg-black hover:text-white disabled:opacity-30 text-black dark:text-white transition-colors cursor-pointer shadow-[1px_1px_0px_0px_#000]"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -270,79 +297,89 @@ export const UserManagementTable = () => {
 
       {/* Add User Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/50 dark:bg-[#181512]/85 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white dark:bg-[#25211e] p-6 sm:p-8 rounded-3xl border border-stone-200 dark:border-[#315c49]/45 shadow-2xl relative space-y-4">
-            <h3 className="text-2xl font-serif font-normal text-stone-950 dark:text-[#f3ece4] uppercase tracking-tight">
-              ADD NEW USER ACCOUNT
-            </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-[#F7F4EE] dark:bg-[#1C1A17] p-6 sm:p-8 border-3 border-black shadow-[10px_10px_0px_0px_#000] relative space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b-2 border-black">
+              <h3 className="text-xl font-black text-black dark:text-white uppercase tracking-tight">
+                PROVISION NEW ACCOUNT
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="p-1 hover:bg-black hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
             <form onSubmit={handleAddUser} className="space-y-4">
               <div>
-                <label className="block text-[10px] font-sans font-bold uppercase tracking-widest text-stone-500 dark:text-[#a99d92] mb-1">
-                  FULL NAME
+                <label className="block text-[11px] font-black uppercase tracking-wider text-stone-600 dark:text-stone-400 mb-1">
+                  FULL NAME:
                 </label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g. Maya Lin"
-                  className="w-full bg-stone-50 dark:bg-[#181512] text-stone-950 dark:text-[#f3ece4] text-sm rounded-2xl px-4 py-2.5 border border-stone-300 dark:border-[#403933] focus:border-stone-950 dark:focus:border-[#789b86] outline-none"
+                  placeholder="e.g. Alex Rivera"
+                  className="w-full bg-white dark:bg-stone-800 text-black dark:text-white text-xs font-bold px-3 py-2.5 border-2 border-black shadow-[2px_2px_0px_0px_#000] outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-sans font-bold uppercase tracking-widest text-stone-500 dark:text-[#a99d92] mb-1">
-                  EMAIL ADDRESS
+                <label className="block text-[11px] font-black uppercase tracking-wider text-stone-600 dark:text-stone-400 mb-1">
+                  EMAIL ADDRESS:
                 </label>
                 <input
                   type="email"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="maya@scenesearch.ai"
-                  className="w-full bg-stone-50 dark:bg-[#181512] text-stone-950 dark:text-[#f3ece4] text-sm rounded-2xl px-4 py-2.5 border border-stone-300 dark:border-[#403933] focus:border-stone-950 dark:focus:border-[#789b86] outline-none"
+                  placeholder="alex@scenesearch.ai"
+                  className="w-full bg-white dark:bg-stone-800 text-black dark:text-white text-xs font-bold px-3 py-2.5 border-2 border-black shadow-[2px_2px_0px_0px_#000] outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-sans font-bold uppercase tracking-widest text-stone-500 dark:text-[#a99d92] mb-1">
-                  PASSWORD
+                <label className="block text-[11px] font-black uppercase tracking-wider text-stone-600 dark:text-stone-400 mb-1">
+                  PASSWORD (MIN 8 CHARS):
                 </label>
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-stone-50 dark:bg-[#181512] text-stone-950 dark:text-[#f3ece4] text-sm rounded-2xl px-4 py-2.5 border border-stone-300 dark:border-[#403933] focus:border-stone-950 dark:focus:border-[#789b86] outline-none"
+                  className="w-full bg-white dark:bg-stone-800 text-black dark:text-white text-xs font-bold px-3 py-2.5 border-2 border-black shadow-[2px_2px_0px_0px_#000] outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-sans font-bold uppercase tracking-widest text-stone-500 dark:text-[#a99d92] mb-1">
-                  ROLE
+                <label className="block text-[11px] font-black uppercase tracking-wider text-stone-600 dark:text-stone-400 mb-1">
+                  ACCESS ROLE:
                 </label>
                 <select
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value)}
-                  className="w-full bg-stone-50 dark:bg-[#181512] text-stone-950 dark:text-[#f3ece4] text-sm rounded-2xl px-4 py-2.5 border border-stone-300 dark:border-[#403933] focus:border-stone-950 dark:focus:border-[#789b86] outline-none"
+                  className="w-full bg-white dark:bg-stone-800 text-black dark:text-white text-xs font-bold px-3 py-2.5 border-2 border-black shadow-[2px_2px_0px_0px_#000] outline-none uppercase"
                 >
-                  <option value="user">Standard User</option>
-                  <option value="admin">Administrator</option>
+                  <option value="engineer">ENGINEER (Search & Annotation)</option>
+                  <option value="admin">ADMINISTRATOR (Full Privileges)</option>
                 </select>
               </div>
 
-              <div className="flex gap-3 pt-4 border-t border-stone-100 dark:border-[#403933]">
+              <div className="flex gap-3 pt-3 border-t-2 border-black">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="flex-1 py-2.5 rounded-full bg-stone-100 dark:bg-[#332e2a] border border-stone-200 dark:border-[#514841] text-stone-700 dark:text-[#c8bbb0] hover:bg-stone-200 text-xs font-bold uppercase tracking-widest"
+                  className="flex-1 py-2.5 bg-white hover:bg-stone-200 text-black text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_#000] cursor-pointer"
                 >
                   CANCEL
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-full bg-stone-950 dark:bg-[#315c49] text-white dark:text-[#f3ece4] hover:bg-orange-700 dark:hover:bg-[#789b86] text-xs font-bold uppercase tracking-widest shadow-sm"
+                  className="flex-1 py-2.5 bg-black hover:bg-[#FF5500] text-white hover:text-black text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_#FF5500] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer"
                 >
                   SAVE USER
                 </button>

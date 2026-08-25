@@ -7,21 +7,40 @@ x-backend-environment: &backend-environment
   CELERY_BROKER_URL: redis://redis:6379/1
   CELERY_RESULT_BACKEND: redis://redis:6379/2
   MINIO_ENDPOINT: minio:9000
+  MINIO_RAW_BUCKET: ${MINIO_RAW_BUCKET:-scenesearch-raw}
+  MINIO_DERIVED_BUCKET: ${MINIO_DERIVED_BUCKET:-scenesearch-derived}
   QDRANT_HOST: qdrant
   QDRANT_PORT: 6333
   QDRANT_GRPC_PORT: 6334
+  QDRANT_VECTOR_SIZE: 2048
+  ML_ENCODER_NAME: Qwen/Qwen3-VL-Embedding-2B
+  ML_QWEN_MODEL_NAME: Qwen/Qwen3-VL-Embedding-2B
+  ML_MODEL_VERSION: qwen3-vl-embedding-2b-v1
+  QWEN_EMBEDDING_URL: http://qwen-embedding:8001
+  QWEN_EMBEDDING_API_KEY: ${QWEN_EMBEDDING_API_KEY:-scenesearch-internal}
+  QWEN_EMBEDDING_TIMEOUT: ${QWEN_EMBEDDING_TIMEOUT:-300}
+  # HTTP request batch, distinct from the service's GPU inference batch.
+  ML_BATCH_SIZE: ${QWEN_EMBEDDING_REQUEST_BATCH_SIZE:-8}
+  SEARCH_MODE: qwen
+  SEARCH_VISUAL_VECTOR: qwen
 
 services:
   api:
-    image: scenesearch-p-081-api:patched
     build:
       context: ./app
-    command: sh -c "alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000"
+      args:
+        EXTRAS: media
+      # Query vectors come from qwen-embedding over HTTP, so the API image does
+      # not need torch, CUDA, or model weights. Pillow remains necessary for
+      # preparing retrieved keyframes for the VLM API.
+    command: sh -c "alembic upgrade head && exec uvicorn api.main:app --host 0.0.0.0 --port 8000"
     env_file: ./app/.env
     environment: *backend-environment
     ports:
       - "8000:8000"
     depends_on:
+      qwen-embedding:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -35,32 +54,86 @@ services:
   worker:
     build:
       context: ./app
-    command: celery -A worker.celery_app:celery_app worker -Q ingestion --loglevel=INFO
+      args:
+        # Frame decoding remains local, while embeddings are produced by the
+        # dedicated GPU service. This worker no longer loads a second 2B model.
+        EXTRAS: media
+    command: celery -A worker.celery_app:celery_app worker -Q ingestion --loglevel=INFO --pool=solo
     env_file: ./app/.env
-    environment: *backend-environment
+    environment:
+      <<: *backend-environment
+    volumes:
+      # The corpus lives on the host and is read-only to the worker. Without
+      # this the container cannot reach the manifests or clips at all, and
+      # ingestion fails on a path that exists perfectly well outside Docker.
+      - ./data:/app/data:ro
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "celery -A worker.celery_app inspect ping --destination celery@$$HOSTNAME | grep -q pong"
-        ]
+      # A solo worker cannot answer Celery inspect while an HTTP embedding call
+      # is in flight. Broker reachability is the stable liveness signal here.
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('redis', 6379), 5).close()"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
 
     depends_on:
+      qwen-embedding:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
 
+  qwen-embedding:
+    build:
+      context: ./app
+      args:
+        EXTRAS: ml
+    command: uvicorn ml.embedding_api:app --host 0.0.0.0 --port 8001 --workers 1
+    env_file: ./app/.env
+    environment:
+      ML_ENCODER_NAME: Qwen/Qwen3-VL-Embedding-2B
+      ML_QWEN_MODEL_NAME: Qwen/Qwen3-VL-Embedding-2B
+      ML_MODEL_VERSION: qwen3-vl-embedding-2b-v1
+      ML_DEVICE: cuda
+      ML_DTYPE: float16
+      # Start conservatively. The server serializes requests and the encoder
+      # can reduce the image batch further after a CUDA OOM.
+      ML_BATCH_SIZE: ${QWEN_EMBEDDING_BATCH_SIZE:-1}
+      ML_IMAGE_SIZE: ${ML_IMAGE_SIZE:-224}
+      QWEN_EMBEDDING_URL: ""
+      ML_QWEN_EMBEDDING_URL: ""
+      QWEN_EMBEDDING_API_KEY: ${QWEN_EMBEDDING_API_KEY:-scenesearch-internal}
+      HF_HOME: /home/appuser/.cache/huggingface
+      HUGGINGFACE_HUB_CACHE: /home/appuser/.cache/huggingface/hub
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    expose:
+      - "8001"
+    volumes:
+      - huggingface_cache:/home/appuser/.cache/huggingface
+    ipc: host
+    shm_size: "4gb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 300s
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
     environment:
-      VITE_API_BASE_URL: http://localhost:8000/api/v1
+      VITE_API_PROXY_TARGET: http://api:8000
     ports:
       - "5173:5173"
     depends_on:
@@ -128,6 +201,10 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-scenesearch}
+      # Originals and servable derivatives are separated at the bucket level
+      # (ADR-0003); both must exist before ingestion writes anything.
+      MINIO_RAW_BUCKET: ${MINIO_RAW_BUCKET:-scenesearch-raw}
+      MINIO_DERIVED_BUCKET: ${MINIO_DERIVED_BUCKET:-scenesearch-derived}
     volumes:
       - ./app/docker/minio/create-bucket.sh:/create-bucket.sh:ro
     entrypoint: ["/bin/sh", "/create-bucket.sh"]
@@ -135,6 +212,9 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.18.2
+    env_file: ./app/.env
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
     ports:
       - "${QDRANT_PORT:-6333}:6333"
       - "${QDRANT_GRPC_PORT:-6334}:6334"
@@ -147,3 +227,4 @@ volumes:
   redis_data:
   minio_data:
   qdrant_data:
+  huggingface_cache:

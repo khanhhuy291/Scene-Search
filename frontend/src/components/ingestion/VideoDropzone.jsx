@@ -1,200 +1,143 @@
-import React, { useState, useRef } from 'react'
-import { UploadCloud, Film, CheckCircle2, AlertCircle, FileVideo, Zap, X, Loader2 } from 'lucide-react'
-import { useToast } from '../../context/ToastContext'
-import { triggerIngestion } from '../../services/api'
+import React, { useRef, useState } from 'react'
+import { AlertCircle, Check, FileVideo, UploadCloud, X } from 'lucide-react'
 
-export const VideoDropzone = ({ onStartIngestion }) => {
-  const { addToast } = useToast()
-  const fileInputRef = useRef(null)
+const MAX_BYTES = 500 * 1024 * 1024
+const ALLOWED = ['mp4', 'mov', 'mkv', 'webm']
 
-  const [dragActive, setDragActive] = useState(false)
-  const [selectedFile, setSelectedFile] = useState(null)
-  const [fileError, setFileError] = useState(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+const formatBytes = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
 
-  const handleDrag = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true)
-    } else if (e.type === 'dragleave') {
-      setDragActive(false)
-    }
-  }
+export const VideoDropzone = ({ onUpload, uploading, uploadProgress, disabled = false }) => {
+  const input = useRef(null)
+  const [file, setFile] = useState(null)
+  const [error, setError] = useState('')
+  const [dragging, setDragging] = useState(false)
 
-  const validateAndSetFile = (file) => {
-    setFileError(null)
-    if (!file) return
-
-    const validExtensions = ['mp4', 'mkv', 'mov', 'webm']
-    const ext = file.name.split('.').pop()?.toLowerCase()
-
-    if (!validExtensions.includes(ext)) {
-      setFileError('Unsupported file format. Please upload an MP4, MOV, or MKV video file.')
-      addToast('Invalid video format. Supported: MP4, MOV, MKV', 'error')
-      return
-    }
-
-    setSelectedFile(file)
-    addToast(`Selected video: ${file.name}`, 'info')
-  }
-
-  const handleDrop = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      validateAndSetFile(e.dataTransfer.files[0])
-    }
-  }
-
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      validateAndSetFile(e.target.files[0])
-    }
-  }
-
-  const handleStart = async () => {
-    if (!selectedFile) return
-    setIsSubmitting(true)
-    const videoPath = `/home/sysadmin/vin/videos/videos/train/${selectedFile.name}`
-
-    try {
-      const res = await triggerIngestion(videoPath)
-      addToast(`Ingestion task enqueued successfully! Task ID: ${res.task_id}`, 'success')
-      onStartIngestion({
-        id: res.task_id,
-        taskId: res.task_id,
-        filename: selectedFile.name,
-        size: (selectedFile.size / (1024 * 1024)).toFixed(1) + ' MB',
-        type: selectedFile.type || 'video/mp4',
-        videoPath: videoPath,
-      })
-    } catch (err) {
-      console.warn('Backend ingestion endpoint response:', err.message)
-      const mockTaskId = `task_${Date.now().toString().slice(-6)}`
-      addToast(`Pipeline task queued: ${selectedFile.name}`, 'info')
-      onStartIngestion({
-        id: mockTaskId,
-        taskId: mockTaskId,
-        filename: selectedFile.name,
-        size: (selectedFile.size / (1024 * 1024)).toFixed(1) + ' MB',
-        type: selectedFile.type || 'video/mp4',
-        videoPath: videoPath,
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
+  const select = (candidate) => {
+    setError('')
+    if (!candidate) return
+    const extension = candidate.name.split('.').pop()?.toLowerCase()
+    if (!ALLOWED.includes(extension)) return setError('USE MP4, MOV, MKV, OR WEBM FORMAT.')
+    if (candidate.size > MAX_BYTES) return setError('MAXIMUM UPLOAD SIZE IS 500 MB.')
+    if (candidate.size === 0) return setError('THE SELECTED FILE IS EMPTY.')
+    setFile(candidate)
   }
 
   return (
-    <div className="bg-white dark:bg-[#25211e]/95 p-8 sm:p-10 rounded-3xl border border-stone-200 dark:border-[#403933] shadow-2xs relative overflow-hidden space-y-6">
-      <div className="text-center mb-6">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-stone-100 dark:bg-[#315c49]/12 border border-stone-200 dark:border-[#315c49]/35 text-orange-700 dark:text-[#789b86] mb-3 shadow-2xs">
-          <UploadCloud className="w-7 h-7" />
+    <section className="bg-white dark:bg-[#1C1A17] border-3 border-black shadow-[6px_6px_0px_0px_#000] p-6 lg:p-8 space-y-6 font-mono">
+      <div className="flex items-start justify-between gap-4 border-b-2 border-black pb-4">
+        <div>
+          <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#FF5500] text-black text-[10px] font-black uppercase border border-black shadow-[1px_1px_0px_0px_#000]">
+            NEW INGESTION TASK
+          </div>
+          <h2 className="text-xl font-black uppercase text-black dark:text-white mt-1">
+            INGEST RAW VIDEO TO NEURAL VECTOR SPACE
+          </h2>
+          <p className="text-xs text-stone-600 dark:text-stone-400 font-sans mt-0.5">
+            Raw files are securely staged in S3. Celery extracts keyframe neural vectors into Qdrant.
+          </p>
         </div>
-        <h2 className="text-3xl font-serif font-normal text-stone-950 dark:text-[#f3ece4] uppercase tracking-tighter ">
-          INGEST MP4 VIDEO STREAM
-        </h2>
-        <p className="text-stone-500 dark:text-[#a99d92] text-xs font-sans tracking-widest uppercase mt-1 max-w-lg mx-auto">
-          Upload video files for keyframe extraction, SigLIP + BGE-M3 embedding generation, and Qdrant vector indexing.
-        </p>
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-[#F7F4EE] dark:bg-stone-800 border-2 border-black text-xs font-black text-black dark:text-white">
+          <Check className="w-3.5 h-3.5 text-[#00D084]" /> MAX 500 MB
+        </div>
       </div>
 
-      {/* Drag Zone Box */}
       <div
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-3xl p-10 text-center cursor-pointer transition-all duration-300 ${
-          dragActive
-            ? 'border-orange-700 dark:border-[#789b86] bg-stone-100 dark:bg-[#315c49]/12 scale-[1.01]'
-            : selectedFile
-            ? 'border-emerald-500 bg-emerald-50/50 dark:bg-[#1d352b]/40'
-            : 'border-stone-300 dark:border-[#514841] bg-stone-50/60 dark:bg-[#181512]/55 hover:border-stone-400 dark:hover:border-stone-600 hover:bg-stone-100/60 dark:hover:bg-[#2d2824]/90'
+        onDragOver={(event) => {
+          event.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault()
+          setDragging(false)
+          select(event.dataTransfer.files[0])
+        }}
+        onClick={() => !uploading && !disabled && input.current?.click()}
+        className={`border-3 border-dashed p-8 text-center transition-all cursor-pointer ${
+          dragging
+            ? 'border-[#FF5500] bg-orange-50 dark:bg-stone-800'
+            : 'border-black bg-[#F7F4EE] dark:bg-stone-900 hover:border-[#FF5500]'
         }`}
       >
         <input
-          ref={fileInputRef}
+          ref={input}
           type="file"
-          accept="video/mp4,video/mkv,video/mov,video/webm"
-          onChange={handleFileChange}
+          accept="video/mp4,video/quicktime,video/x-matroska,video/webm"
           className="hidden"
+          onChange={(event) => select(event.target.files[0])}
         />
-
-        {!selectedFile ? (
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-16 h-16 rounded-full bg-white dark:bg-[#332e2a] border border-stone-200 dark:border-[#514841] flex items-center justify-center text-orange-700 dark:text-[#789b86] shadow-2xs">
-              <Film className="w-8 h-8 text-orange-700 dark:text-[#789b86]" />
+        {file ? (
+          <div className="flex items-center justify-between gap-4 p-3 bg-white dark:bg-stone-800 border-2 border-black shadow-[3px_3px_0px_0px_#000]">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 bg-black text-white flex items-center justify-center shrink-0">
+                <FileVideo className="w-5 h-5 text-[#FF5500]" />
+              </div>
+              <div className="min-w-0 text-left">
+                <p className="font-black text-xs text-black dark:text-white truncate">{file.name}</p>
+                <p className="text-[10px] text-stone-500">{formatBytes(file.size)} · {file.type || 'video/mp4'}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-stone-900 dark:text-[#ded3c8]">
-                Drag and drop your video file here, or{' '}
-                <span className="text-orange-700 dark:text-[#789b86] underline font-bold">browse computer</span>
-              </p>
-              <p className="text-xs text-stone-500 dark:text-[#a99d92] mt-1 font-mono">
-                Supports MP4, MOV, MKV (2FPS sampling, SigLIP + BGE-M3 named vectors)
-              </p>
-            </div>
+            {!uploading && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setFile(null)
+                }}
+                className="p-1.5 bg-red-100 hover:bg-red-600 text-red-900 hover:text-white border border-black cursor-pointer"
+                aria-label="Remove file"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         ) : (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-[#25211e] border border-stone-200 dark:border-[#403933] text-left">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-[#315c49]/18 border border-emerald-200 dark:border-[#456f5b]/45 flex items-center justify-center text-emerald-700 dark:text-[#789b86] shrink-0">
-                <FileVideo className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-stone-950 dark:text-[#f3ece4]">{selectedFile.name}</p>
-                <p className="text-xs text-stone-500 dark:text-[#a99d92] font-mono">
-                  {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • {selectedFile.type || 'MP4 Video'}
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                setSelectedFile(null)
-              }}
-              className="p-2 text-stone-400 hover:text-rose-700 dark:hover:text-[#c98d89] transition-colors rounded-full bg-stone-100 dark:bg-[#332e2a] hover:bg-rose-50 border border-stone-200 dark:border-[#514841]"
-              title="Remove File"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          <div className="space-y-2">
+            <UploadCloud className="w-10 h-10 mx-auto text-[#FF5500]" />
+            <p className="text-sm font-black uppercase text-black dark:text-white">
+              DROP RAW VIDEO HERE OR CLICK TO BROWSE
+            </p>
+            <p className="text-xs text-stone-500">SUPPORTED FORMATS: MP4, MOV, MKV, WEBM</p>
           </div>
         )}
       </div>
 
-      {fileError && (
-        <div className="flex items-center gap-2 mt-4 text-xs text-rose-600 dark:text-[#c98d89] font-medium">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{fileError}</span>
+      {error && (
+        <div className="p-3 bg-red-100 dark:bg-red-950/50 border-2 border-red-600 text-xs font-bold text-red-900 dark:text-red-300 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
-      {selectedFile && (
-        <div className="mt-6 flex justify-end">
-          <button
-            type="button"
-            disabled={isSubmitting}
-            onClick={handleStart}
-            className="w-full sm:w-auto px-8 py-3.5 rounded-full font-bold text-xs tracking-widest uppercase text-white dark:text-[#f3ece4] bg-stone-950 dark:bg-[#294c3e] hover:bg-orange-700 dark:hover:opacity-95 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-orange-300 dark:text-[#f3ece4]" /> ENQUEUING TASK...
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4 text-orange-300 dark:text-[#f3ece4]" /> TRIGGER ASYNC PIPELINE INGESTION
-              </>
-            )}
-          </button>
+      {uploading && (
+        <div className="space-y-1.5">
+          <div className="flex justify-between text-xs font-black">
+            <span>UPLOADING TO S3 MINIO STORAGE...</span>
+            <span>{uploadProgress}%</span>
+          </div>
+          <div className="h-3 bg-[#F7F4EE] dark:bg-stone-800 border-2 border-black overflow-hidden">
+            <div
+              className="h-full bg-[#FF5500] transition-all"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
         </div>
       )}
-    </div>
+
+      <div className="flex justify-end pt-2">
+        <button
+          type="button"
+          disabled={!file || uploading || disabled}
+          onClick={() => onUpload(file)}
+          className="px-6 py-3 bg-black hover:bg-[#FF5500] text-white hover:text-black text-xs font-black uppercase tracking-wider border-2 border-black shadow-[4px_4px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+        >
+          {uploading
+            ? 'PROCESSING UPLOAD…'
+            : disabled
+              ? 'LOAD QWEN MODEL BEFORE INGESTING'
+              : 'UPLOAD & TRIGGER CELERY PIPELINE ↵'}
+        </button>
+      </div>
+    </section>
   )
 }

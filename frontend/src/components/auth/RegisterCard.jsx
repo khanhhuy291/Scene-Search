@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Mail, Lock, User, ArrowRight } from 'lucide-react'
 import { FloatingInput } from '../common/FloatingInput'
@@ -6,20 +7,20 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 
 export const RegisterCard = ({ onSwitchToLogin }) => {
-  const { register } = useAuth()
+  const { register, homePath } = useAuth()
   const { addToast } = useToast()
+  const navigate = useNavigate()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState('user')
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const getPasswordStrength = (pass) => {
     if (!pass) return { score: 0, label: 'None', color: 'bg-stone-200 dark:bg-[#332e2a]' }
-    if (pass.length < 6) return { score: 1, label: 'Weak', color: 'bg-rose-500' }
-    if (pass.length < 10) return { score: 2, label: 'Medium', color: 'bg-amber-500' }
+    if (pass.length < 8) return { score: 1, label: 'Weak (< 8 chars)', color: 'bg-rose-500' }
+    if (pass.length < 12) return { score: 2, label: 'Medium', color: 'bg-amber-500' }
     return { score: 3, label: 'Strong', color: 'bg-emerald-500' }
   }
 
@@ -36,8 +37,8 @@ export const RegisterCard = ({ onSwitchToLogin }) => {
 
     if (!password) {
       errs.password = 'Password is required'
-    } else if (password.length < 6) {
-      errs.password = 'Password must be at least 6 characters'
+    } else if (password.length < 8) {
+      errs.password = 'Password must be at least 8 characters'
     }
 
     setErrors(errs)
@@ -50,8 +51,9 @@ export const RegisterCard = ({ onSwitchToLogin }) => {
 
     setIsSubmitting(true)
     try {
-      await register(name, email, password, role)
+      const created = await register(name, email, password)
       addToast('Account created successfully!', 'success')
+      navigate(created?.role === 'admin' ? '/ingest' : homePath || '/search', { replace: true })
     } catch (err) {
       addToast(err.message || 'Registration failed', 'error')
       setErrors({ auth: err.message })
@@ -104,7 +106,7 @@ export const RegisterCard = ({ onSwitchToLogin }) => {
           id="reg_password"
           name="password"
           type="password"
-          label="Password"
+          label="Password (min 8 chars)"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={errors.password}
@@ -125,36 +127,6 @@ export const RegisterCard = ({ onSwitchToLogin }) => {
           </div>
         )}
 
-        {/* Role Selector */}
-        <div className="mb-4">
-          <label className="block text-[10px] font-sans font-bold uppercase tracking-widest text-stone-500 dark:text-[#a99d92] mb-1">
-            ACCOUNT PRIVILEGE ROLE
-          </label>
-          <div className="grid grid-cols-2 gap-2 font-mono text-xs">
-            <button
-              type="button"
-              onClick={() => setRole('user')}
-              className={`py-2 px-3 rounded-2xl border text-center font-bold transition-all ${
-                role === 'user'
-                  ? 'bg-stone-950 text-white border-stone-950 dark:bg-[#315c49]/18 dark:text-[#a8c0b0] dark:border-[#315c49]/45'
-                  : 'bg-stone-50 dark:bg-[#181512] border-stone-200 dark:border-[#403933] text-stone-600 dark:text-[#a99d92]'
-              }`}
-            >
-              Standard User
-            </button>
-            <button
-              type="button"
-              onClick={() => setRole('admin')}
-              className={`py-2 px-3 rounded-2xl border text-center font-bold transition-all ${
-                role === 'admin'
-                  ? 'bg-stone-950 text-white border-stone-950 dark:bg-[#315c49]/18 dark:text-[#a8c0b0] dark:border-[#315c49]/45'
-                  : 'bg-stone-50 dark:bg-[#181512] border-stone-200 dark:border-[#403933] text-stone-600 dark:text-[#a99d92]'
-              }`}
-            >
-              Administrator
-            </button>
-          </div>
-        </div>
 
         <button
           type="submit"

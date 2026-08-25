@@ -2,10 +2,19 @@
   "include": [
     "app"
   ],
+  "exclude": [
+    "app/.venv",
+    "app/tests",
+    "app/db/migrations",
+    "**/node_modules",
+    "**/__pycache__"
+  ],
   "extraPaths": [
     "./app",
     "app"
   ],
   "venvPath": "app",
-  "venv": ".venv"
+  "venv": ".venv",
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "standard"
 }

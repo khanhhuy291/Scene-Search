@@ -8,13 +8,14 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from core.config import get_settings
-from db.models import Base
+from db.models import Base  # noqa: F401 - imported for its metadata side effect
 from infrastructure.postgres import database_url
 
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
+# Without this, autogenerate silently produces empty revisions.
 target_metadata = Base.metadata
 
 
@@ -30,7 +31,12 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: object) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

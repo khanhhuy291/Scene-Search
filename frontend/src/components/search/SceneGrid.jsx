@@ -1,113 +1,263 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { X, Check, Ban, Loader2, Plus } from 'lucide-react'
 import { SceneCard } from './SceneCard'
-import { Film, Search, Loader2 } from 'lucide-react'
+import { explainEmptyResult, humanizeConcept } from '../../lib/searchApi'
+import { useAuth } from '../../context/AuthContext'
+import { useDataset } from '../../context/DatasetContext'
+import { useToast } from '../../context/ToastContext'
 
-export const MOCK_SCENES = [
-  {
-    id: 'sc_801',
-    videoName: 'cyberpunk_neon_city_4k.mp4',
-    title: 'Cyberpunk Red Sports Car in Rain',
-    description: 'High speed chase with a sleek red sports car driving down a futuristic neon city street in heavy rain.',
-    timestamp: '01:42 - 02:15',
-    timestamp_sec: 102.0,
-    score: 96.4,
-    tags: ['cyberpunk', 'car', 'rain', 'neon', 'city'],
-    thumbnail: 'https://images.unsplash.com/photo-1508974239320-0a029497e820?auto=format&fit=crop&w=800&q=80'
-  },
-  {
-    id: 'sc_802',
-    videoName: 'developer_workspace_vlog.mp4',
-    title: 'Developer Typing Code on Mechanical Keyboard',
-    description: 'Close-up camera angle of software engineer typing python AI code on a RGB backlit mechanical keyboard.',
-    timestamp: '04:10 - 04:38',
-    timestamp_sec: 250.0,
-    score: 91.8,
-    tags: ['coding', 'keyboard', 'developer', 'workspace'],
-    thumbnail: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80'
-  },
-  {
-    id: 'sc_803',
-    videoName: 'drone_nature_scenery.mp4',
-    title: 'Sunset Drone Aerial Over Ocean',
-    description: 'Breathtaking 4K drone camera flight over golden hour ocean waves crashing against coastal cliffs.',
-    timestamp: '00:15 - 00:52',
-    timestamp_sec: 15.0,
-    score: 88.5,
-    tags: ['drone', 'ocean', 'sunset', 'nature', 'aerial'],
-    thumbnail: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80'
-  }
-]
-
-export const SceneGrid = ({ scenes = [], query = '', isSearching = false, hasSearched = false }) => {
-  const [sortBy, setSortBy] = useState('score')
-
-  const displayScenes = scenes.length > 0 ? scenes : (hasSearched ? [] : MOCK_SCENES)
-
-  const sortedScenes = [...displayScenes].sort((a, b) => {
-    if (sortBy === 'score') return (b.score || 0) - (a.score || 0)
-    return (a.timestamp || '').localeCompare(b.timestamp || '')
-  })
+const ConceptChip = ({ concept, kind, onRemove }) => {
+  const isExclusion = kind === 'exclude'
+  const Icon = isExclusion ? Ban : Check
 
   return (
-    <div className="space-y-6">
-      {/* Controls Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-white dark:bg-[#25211e]/95 rounded-2xl border border-stone-200 dark:border-[#403933] shadow-2xs">
-        <div className="flex items-center gap-3 pl-2 orange-accent-line">
-          <img src="/brand/logo-primary.jpg" alt="" className="w-8 h-8 rounded-full object-cover" />
-          <span className="text-xs font-sans font-bold uppercase tracking-widest text-stone-950 dark:text-[#f3ece4]">
-            QDRANT VECTOR RESULTS ({isSearching ? '...' : sortedScenes.length})
-            {query && <span className="text-stone-500 dark:text-[#a99d92] font-serif lowercase ml-2 font-normal">for "{query}"</span>}
-          </span>
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono font-black uppercase tracking-wider border-2 ${
+        isExclusion
+          ? 'bg-red-100 dark:bg-red-950/60 text-red-900 dark:text-red-300 border-red-600'
+          : 'bg-[#00D084] text-black border-black shadow-[1.5px_1.5px_0px_0px_#000]'
+      }`}
+    >
+      <Icon className="w-3 h-3 stroke-[3]" />
+      {isExclusion ? 'NO ' : ''}
+      {humanizeConcept(concept)}
+      <button
+        type="button"
+        onClick={() => onRemove(kind, concept)}
+        title={`Remove the "${humanizeConcept(concept)}" constraint`}
+        className="ml-1 p-0.5 hover:bg-black hover:text-white transition-colors cursor-pointer"
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </span>
+  )
+}
+
+export const SceneGrid = ({
+  scenes = [],
+  query = '',
+  result,
+  searchMeta = null,
+  isSearching = false,
+  isLoadingMore = false,
+  onLoadMore,
+  onRemoveConcept
+}) => {
+  const [sortBy, setSortBy] = useState('relevance')
+  const { isEngineer } = useAuth()
+  const { addItems, isSelected } = useDataset()
+  const { addToast } = useToast()
+
+  const sortedScenes = useMemo(() => {
+    if (sortBy === 'relevance') return scenes
+    const copy = [...scenes]
+    if (sortBy === 'moments') copy.sort((a, b) => b.keyframesMatched - a.keyframesMatched)
+    if (sortBy === 'timestamp') copy.sort((a, b) => a.startSeconds - b.startSeconds)
+    return copy
+  }, [scenes, sortBy])
+
+  const unselectedCount = useMemo(
+    () => scenes.filter((scene) => !isSelected(scene.id)).length,
+    [scenes, isSelected]
+  )
+
+  const handleAddAll = () => {
+    try {
+      const { added, skipped } = addItems(scenes, searchMeta || {})
+      if (added === 0) {
+        addToast(
+          skipped > 0 ? 'All visible results are already in your draft' : 'Nothing to add',
+          'info'
+        )
+      } else {
+        addToast(
+          `Added ${added} moment${added === 1 ? '' : 's'} to draft${skipped ? ` (${skipped} already in draft)` : ''}`,
+          'success'
+        )
+      }
+    } catch (err) {
+      addToast(err.message, 'error')
+    }
+  }
+
+  const hasConstraints =
+    (result?.requiredConcepts?.length ?? 0) > 0 || (result?.excludedConcepts?.length ?? 0) > 0
+
+  if (isSearching && scenes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20 font-mono text-black dark:text-white">
+        <div className="w-10 h-10 border-3 border-black border-t-[#FF5500] animate-spin" />
+        <span className="text-xs font-black uppercase tracking-widest">
+          SCANNING QDRANT VECTOR SPACE...
+        </span>
+      </div>
+    )
+  }
+
+  if (scenes.length === 0) {
+    return (
+      <div className="text-center py-16 space-y-4 p-8 bg-white dark:bg-[#1C1A17] border-3 border-black shadow-[6px_6px_0px_0px_#000] font-mono">
+        <p className="text-base font-black text-black dark:text-white uppercase">
+          {result?.belowThreshold ? '[NO FOOTAGE MATCHING THRESHOLD IN CORPUS]' : '[ZERO RESULTS MATCHED]'}
+        </p>
+        <p className="text-xs font-sans text-stone-600 dark:text-stone-400 max-w-lg mx-auto leading-relaxed">
+          {explainEmptyResult({
+            query,
+            belowThreshold: result?.belowThreshold,
+            unconfirmedConcepts: result?.unconfirmedConcepts,
+            excludedConcepts: result?.excludedConcepts
+          })}
+        </p>
+        {hasConstraints && (
+          <div className="flex items-center gap-2 flex-wrap justify-center pt-2">
+            {result.requiredConcepts.map((concept) => (
+              <ConceptChip
+                key={`require-${concept}`}
+                concept={concept}
+                kind="require"
+                onRemove={onRemoveConcept}
+              />
+            ))}
+            {result.excludedConcepts.map((concept) => (
+              <ConceptChip
+                key={`exclude-${concept}`}
+                concept={concept}
+                kind="exclude"
+                onRemove={onRemoveConcept}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6 font-sans">
+      {/* Degraded / Threshold Notices */}
+      {(result.degraded || result.belowThreshold || (result.unmatchedTerms?.length ?? 0) > 0) && (
+        <div className="flex flex-wrap gap-2 font-mono text-[10px] font-black uppercase">
+          {result.degraded && (
+            <span className="px-2.5 py-1 bg-amber-100 border border-black text-amber-950 shadow-[1.5px_1.5px_0px_0px_#000]">
+              DEGRADED · SIGLIP ONLY
+            </span>
+          )}
+          {result.belowThreshold && (
+            <span className="px-2.5 py-1 bg-stone-200 border border-black text-stone-900 shadow-[1.5px_1.5px_0px_0px_#000]">
+              BELOW SIMILARITY THRESHOLD
+            </span>
+          )}
+          {result.unmatchedTerms?.length > 0 && (
+            <span className="px-2.5 py-1 bg-stone-200 border border-black text-stone-900 shadow-[1.5px_1.5px_0px_0px_#000]">
+              UNRECOGNIZED: {result.unmatchedTerms.join(', ')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Controls / Summary Header Bar */}
+      <div className="p-4 sm:p-5 bg-white dark:bg-[#1C1A17] border-3 border-black shadow-[6px_6px_0px_0px_#000] space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-0.5 font-mono">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-[#FF5500] text-black text-[10px] font-black uppercase border border-black shadow-[1px_1px_0px_0px_#000]">
+                {result.exhaustive ? 'EXHAUSTIVE' : 'TOP-K'}
+              </span>
+              <span className="text-xs font-black uppercase text-black dark:text-white">
+                FOUND {result.totalVideos} MATCHING VIDEOS
+                {query && <span className="text-[#FF5500] ml-1">"{query}"</span>}
+              </span>
+            </div>
+            <p className="text-[11px] text-stone-500 font-bold">
+              {result.totalKeyframes} KEYFRAMES • 1 PER VIDEO • LATENCY: {Math.round(result.tookMs)}ms
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap font-mono">
+            {isEngineer && scenes.length > 0 && (
+              <button
+                type="button"
+                onClick={handleAddAll}
+                disabled={unselectedCount === 0}
+                className="px-4 py-2 bg-black hover:bg-[#FF5500] text-white hover:text-black text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                ADD ALL{unselectedCount > 0 ? ` (${unselectedCount})` : ''}
+              </button>
+            )}
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black uppercase text-stone-500">SORT:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-[#F7F4EE] dark:bg-stone-800 border-2 border-black text-black dark:text-white text-xs font-mono font-black uppercase px-3 py-1.5 outline-none shadow-[2px_2px_0px_0px_#000]"
+              >
+                <option value="relevance">RELEVANCE</option>
+                <option value="moments">MATCHING MOMENTS</option>
+                <option value="timestamp">TIMESTAMP</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-stone-500 dark:text-[#a99d92] font-mono">Sort:</span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="bg-stone-100 dark:bg-[#332e2a] border border-stone-200 dark:border-[#514841] text-stone-900 dark:text-[#ded3c8] text-xs font-mono font-bold rounded-full px-3.5 py-1.5 focus:outline-none"
-          >
-            <option value="score">Cosine Relevance Score</option>
-            <option value="timestamp">Timestamp Chronological</option>
-          </select>
-        </div>
+        {/* Concept Constraints Filters */}
+        {hasConstraints && (
+          <div className="flex items-center gap-2 flex-wrap pt-3 border-t-2 border-black/20 font-mono">
+            <span className="text-[10px] font-black uppercase tracking-wider text-stone-500 shrink-0">
+              INFERRED CONSTRAINTS:
+            </span>
+            {result.requiredConcepts.map((concept) => (
+              <ConceptChip
+                key={`require-${concept}`}
+                concept={concept}
+                kind="require"
+                onRemove={onRemoveConcept}
+              />
+            ))}
+            {result.excludedConcepts.map((concept) => (
+              <ConceptChip
+                key={`exclude-${concept}`}
+                concept={concept}
+                kind="exclude"
+                onRemove={onRemoveConcept}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Loading Skeleton View */}
-      {isSearching && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3, 4, 5, 6].map((idx) => (
-            <div key={idx} className="bg-white dark:bg-[#25211e] rounded-3xl overflow-hidden border border-stone-200 dark:border-[#403933] p-6 space-y-4 animate-pulse">
-              <div className="aspect-video w-full bg-stone-200 dark:bg-[#332e2a] rounded-2xl" />
-              <div className="h-4 bg-stone-200 dark:bg-[#332e2a] rounded w-3/4" />
-              <div className="h-3 bg-stone-200 dark:bg-[#332e2a] rounded w-full" />
-              <div className="h-3 bg-stone-200 dark:bg-[#332e2a] rounded w-2/3" />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Empty Search State */}
-      {!isSearching && hasSearched && sortedScenes.length === 0 && (
-        <div className="text-center py-16 px-4 bg-white dark:bg-[#25211e] rounded-3xl border border-stone-200 dark:border-[#403933] space-y-4 max-w-lg mx-auto">
-          <Search className="w-12 h-12 text-stone-400 dark:text-[#789b86] mx-auto opacity-70" />
-          <h3 className="text-lg font-serif text-stone-900 dark:text-[#f3ece4]">No matching scene vectors found</h3>
-          <p className="text-stone-500 dark:text-[#a99d92] text-xs">
-            Try adjusting your query string or describing actions, objects, lighting, or setting details.
-          </p>
-        </div>
-      )}
-
       {/* Grid Layout */}
-      {!isSearching && sortedScenes.length > 0 && (
-        <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <AnimatePresence>
-            {sortedScenes.map((scene) => (
-              <SceneCard key={scene.id} scene={scene} />
-            ))}
-          </AnimatePresence>
-        </motion.div>
+      <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <AnimatePresence>
+          {sortedScenes.map((scene) => (
+            <SceneCard key={scene.id} scene={scene} searchMeta={searchMeta} />
+          ))}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* Load More Pagination */}
+      {result.nextCursor && (
+        <div className="flex flex-col items-center gap-2 pt-6 font-mono">
+          <button
+            type="button"
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+            className="px-8 py-3 bg-black hover:bg-[#FF5500] text-white hover:text-black font-black text-xs uppercase tracking-widest border-2 border-black shadow-[4px_4px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            {isLoadingMore ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> LOADING...
+              </>
+            ) : (
+              <>LOAD MORE MATCHING VIDEOS ↵</>
+            )}
+          </button>
+          <span className="text-[11px] text-stone-500 font-bold">
+            SHOWING {scenes.length} OF {result.totalVideos} MATCHING VIDEOS
+          </span>
+        </div>
       )}
     </div>
   )

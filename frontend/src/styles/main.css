@@ -5,93 +5,148 @@
 @layer base {
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    background-color: #F5F0E8;
-    color: #1C1917;
+    background-color: #F7F4EE;
+    color: #111111;
     transition: background-color 0.3s ease, color 0.3s ease;
   }
 
   html.dark body {
-    background-color: #181512 !important;
-    color: #f5f0e8 !important;
+    background-color: #141210 !important;
+    color: #f7f4ee !important;
   }
 
-  h1, h2, .font-serif-heading {
-    font-family: 'Instrument Serif', 'Playfair Display', Georgia, serif;
+  h1, h2, h3, .font-brutalist {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    letter-spacing: -0.03em;
   }
 }
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #F4F1EA;
+  background: #EFECE3;
 }
 html.dark ::-webkit-scrollbar-track {
   background: #181512;
 }
 ::-webkit-scrollbar-thumb {
-  background: #D6D3D1;
-  border-radius: 9999px;
+  background: #111111;
+  border-radius: 0px;
 }
 html.dark ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: #443e39;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #789B86;
+  background: #FF5500;
 }
 html.dark ::-webkit-scrollbar-thumb:hover {
-  background: #789B86;
+  background: #FF5500;
 }
 
-/* Light & Dark Glass / Bento Card Utilities */
-.classic-card {
+/* Brutalist UI System Tokens & Utilities */
+.brutalist-card {
   background-color: #FFFFFF;
-  border: 1px solid #E7E5E4;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02);
-  transition: all 0.3s ease;
+  border: 2px solid #000000;
+  box-shadow: 4px 4px 0px 0px #000000;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-html.dark .classic-card {
-  background: #25211e;
-  border: 1px solid #403933;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
+html.dark .brutalist-card {
+  background-color: #1C1916;
+  border: 2px solid #38332E;
+  box-shadow: 4px 4px 0px 0px #000000;
 }
 
-.classic-card-hover {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+.brutalist-card-hover {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.classic-card-hover:hover {
-  transform: translateY(-2px);
-  border-color: #789B86;
-  box-shadow: 0 10px 30px -10px rgba(67, 56, 202, 0.15);
+.brutalist-card-hover:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px 0px #FF5500;
+  border-color: #000000;
 }
 
-html.dark .classic-card-hover:hover {
-  transform: translateY(-3px);
-  border-color: #789b86;
-  box-shadow: 0 10px 30px -12px rgba(49, 92, 73, 0.30);
+html.dark .brutalist-card-hover:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px 0px #FF5500;
+  border-color: #FF5500;
+}
+
+.brutalist-btn {
+  background-color: #000000;
+  color: #FFFFFF;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 2px solid #000000;
+  box-shadow: 3px 3px 0px 0px #FF5500;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+}
+
+.brutalist-btn:hover {
+  transform: translate(1.5px, 1.5px);
+  box-shadow: 0px 0px 0px 0px #FF5500;
+  background-color: #FF5500;
+  color: #000000;
+}
+
+.brutalist-btn-secondary {
+  background-color: #FFFFFF;
+  color: #000000;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 2px solid #000000;
+  box-shadow: 3px 3px 0px 0px #000000;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+}
+
+html.dark .brutalist-btn-secondary {
+  background-color: #25211E;
+  color: #F7F4EE;
+  border-color: #403933;
+}
+
+.brutalist-btn-secondary:hover {
+  transform: translate(1.5px, 1.5px);
+  box-shadow: 0px 0px 0px 0px #000000;
+  background-color: #000000;
+  color: #FFFFFF;
+}
+
+.brutalist-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border: 1px solid #000000;
+  background-color: #FFFFFF;
+  color: #000000;
+  box-shadow: 1.5px 1.5px 0px 0px #000000;
+}
+
+html.dark .brutalist-tag {
+  background-color: #25211E;
+  color: #E8E2D2;
+  border-color: #403933;
+  box-shadow: 1.5px 1.5px 0px 0px #000000;
 }
 
 /* Vertical Accent Line */
 .orange-accent-line {
-  border-left: 2px solid #789B86;
+  border-left: 3px solid #FF5500;
 }
 
 html.dark .orange-accent-line {
-  border-left: 2px solid #789B86;
-}
-
-/* Scroll Indicator Line Pulse */
-@keyframes scrollLine {
-  0% { transform: scaleY(0); transform-origin: top; }
-  50% { transform: scaleY(1); transform-origin: top; }
-  50.1% { transform: scaleY(1); transform-origin: bottom; }
-  100% { transform: scaleY(0); transform-origin: bottom; }
-}
-
-.animate-scroll-line {
-  animation: scrollLine 2.5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  border-left: 3px solid #FF5500;
 }

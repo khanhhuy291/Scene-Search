@@ -3,19 +3,34 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from datetime import UTC, datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import UUID, uuid4
 
 from celery.result import AsyncResult
-from fastapi import APIRouter, HTTPException, status
-from loguru import logger
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
-from repositories.task_status import create_task_status, get_task_status, update_task_status
-from schemas.task import IngestionTaskCreate, TaskStatus, TaskStatusResponse
+from api.deps import require_admin
+from infrastructure.minio import get_derived_storage, get_raw_storage
+from repositories import corpus
+from repositories.task_status import (
+    create_task_status,
+    get_task_status,
+    list_task_statuses,
+    update_task_status,
+)
+from schemas.task import TaskStatus, TaskStatusPage, TaskStatusResponse
+from search.index import delete_by_video
+from services.embedding_model import require_qwen_embedding_ready
 from worker.celery_app import celery_app
-from worker.tasks.ingestion import ingest_video as process_video_ingestion
+from worker.tasks.ingestion import process_video_ingestion
 
-router = APIRouter(tags=["ingestion"])
+router = APIRouter(tags=["ingestion"], dependencies=[Depends(require_admin)])
+_MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+_ALLOWED_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm"}
+_PIPELINE_VERSION = "scene-ingestion-v1"
 
 _CELERY_STATE_MAP = {
     "PENDING": TaskStatus.PENDING,
@@ -29,44 +44,132 @@ _CELERY_STATE_MAP = {
 }
 
 
-@router.post("/ingest", response_model=TaskStatusResponse, status_code=status.HTTP_202_ACCEPTED)
-async def create_ingestion_task(request: IngestionTaskCreate) -> TaskStatusResponse:
+@router.post(
+    "/ingest/upload", response_model=TaskStatusResponse, status_code=status.HTTP_202_ACCEPTED
+)
+async def upload_and_create_ingestion_task(
+    file: UploadFile = File(...),
+    _: None = Depends(require_qwen_embedding_ready),
+) -> TaskStatusResponse:
+    """Stream an upload to raw MinIO, register it, and enqueue by identifiers."""
+    filename = Path(file.filename or "upload.bin").name
+    suffix = Path(filename).suffix.lower()
+    if suffix not in _ALLOWED_SUFFIXES:
+        raise HTTPException(status_code=415, detail="Unsupported video format")
+
+    digest = hashlib.sha256()
+    size = 0
+    claimed = False
+    with TemporaryDirectory(prefix="scenesearch-upload-") as directory:
+        local_path = Path(directory) / f"upload{suffix}"
+        try:
+            with local_path.open("wb") as destination:
+                while chunk := await file.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > _MAX_UPLOAD_BYTES:
+                        raise HTTPException(status_code=413, detail="Upload exceeds 500 MB")
+                    digest.update(chunk)
+                    destination.write(chunk)
+        finally:
+            await file.close()
+        if size == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+        video_id, created = await corpus.upsert_video(
+            checksum=digest.hexdigest(),
+            source_uri=f"upload://{filename}",
+            dataset="uploads",
+            external_id=filename,
+        )
+        raw_key = f"raw/{video_id}/source{suffix}"
+        if created:
+            try:
+                await asyncio.to_thread(
+                    get_raw_storage().upload_file,
+                    raw_key,
+                    local_path,
+                    content_type=file.content_type or "application/octet-stream",
+                )
+                await corpus.set_video_assets(video_id, raw_object_key=raw_key)
+            except Exception as exc:
+                await corpus.delete_video(video_id)
+                raise HTTPException(
+                    status_code=503, detail="Unable to store uploaded video"
+                ) from exc
+        if not await corpus.is_video_indexed(video_id):
+            claimed = await corpus.claim_video_ingestion(video_id)
+            if not claimed:
+                raise HTTPException(status_code=409, detail="This video is already being processed")
+
     task_id = str(uuid4())
     try:
-        record = await create_task_status(task_id, request.video_path)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Task status stores are unavailable",
-        ) from exc
-
+        record = await create_task_status(
+            task_id,
+            filename,
+            video_id=str(video_id),
+            celery_task_id=task_id,
+            pipeline_version=_PIPELINE_VERSION,
+        )
+    except Exception:
+        if claimed:
+            await corpus.mark_video_ingestion_failed(video_id)
+        raise
     try:
-        # An explicit Celery id keeps the public API id, custom status-store id,
-        # and Celery result-backend id identical. ``apply_async`` is Celery's
-        # id-aware equivalent of ``delay``.
         await asyncio.to_thread(
             process_video_ingestion.apply_async,
-            args=(task_id, request.video_path),
+            kwargs={"task_id": task_id, "video_id": str(video_id)},
             task_id=task_id,
         )
     except Exception as exc:
-        try:
-            await update_task_status(
-                task_id,
-                TaskStatus.FAILED,
-                progress=0,
-                error="Unable to enqueue ingestion task",
-            )
-        except Exception:
-            # The enqueue failure remains the primary error reported to the API.
-            logger.exception(
-                "Unable to persist enqueue failure for task {task_id}", task_id=task_id
-            )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to enqueue ingestion task",
-        ) from exc
+        await corpus.mark_video_ingestion_failed(video_id)
+        await update_task_status(
+            task_id,
+            TaskStatus.FAILED,
+            progress=0,
+            error="Unable to enqueue ingestion task",
+            error_code="enqueue_failed",
+        )
+        raise HTTPException(status_code=503, detail="Unable to enqueue ingestion task") from exc
     return record
+
+
+@router.get("/tasks", response_model=TaskStatusPage)
+async def list_ingestion_tasks(
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    task_status: TaskStatus | None = Query(default=None, alias="status"),
+) -> TaskStatusPage:
+    items, total = await list_task_statuses(limit=limit, offset=offset, status=task_status)
+    return TaskStatusPage(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.delete("/videos/{video_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_video(video_id: UUID) -> None:
+    """Cancel active ingestion and remove a video's persisted artifacts."""
+    plan = await corpus.prepare_video_deletion(video_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    try:
+        # Persist cancellation first. A worker reaching its next stage boundary
+        # now stops cooperatively even if the revoke broadcast is delayed.
+        await corpus.cancel_video_tasks(video_id)
+        for celery_task_id in plan.celery_task_ids:
+            await asyncio.to_thread(
+                celery_app.control.revoke,
+                celery_task_id,
+                terminate=False,
+            )
+        await delete_by_video(str(video_id))
+        await asyncio.to_thread(get_raw_storage().delete_prefix, f"raw/{video_id}/")
+        await asyncio.to_thread(get_derived_storage().delete_prefix, f"videos/{video_id}/")
+        await asyncio.to_thread(get_derived_storage().delete_prefix, f"thumbnails/{video_id}/")
+        await corpus.delete_video(video_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to completely delete video; retry the request",
+        ) from exc
 
 
 def _celery_fallback(task_id: str) -> TaskStatusResponse | None:

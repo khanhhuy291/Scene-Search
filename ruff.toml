@@ -1,0 +1,23 @@
+# Root configuration so that files outside app/ (scripts/, tooling) are linted
+# and formatted with the same rules as the backend package. Without this, ruff
+# falls back to its 88-column default for anything not under app/pyproject.toml.
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "app",
+    "frontend",
+    "data",
+    "reports",
+    # Pre-existing developer logging tooling, left under its original style.
+    "scripts/log_antigravity.py",
+    "scripts/log_hook.py",
+    "scripts/log_manual.py",
+    "scripts/submit_log.py",
+]
+
+[lint]
+select = ["E", "F", "I", "UP", "SIM"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

@@ -20,17 +20,51 @@ dependencies = [
     "minio>=7.2,<8.0",
     "pydantic-settings>=2.7,<3.0",
     "loguru>=0.7,<1.0",
-    "langchain-core>=0.3,<2.0",
-    "langchain-openai>=0.3,<2.0",
-    "langgraph>=0.1,<1.0",
+    "python-multipart>=0.0.20,<1.0",
+    "pyjwt[crypto]>=2.9.0,<3.0",
+    "bcrypt>=4.0.0,<5.0",
+    "email-validator>=2.0,<3.0",
+    "httpx>=0.28,<1.0",
 ]
 
 [project.optional-dependencies]
+# Media handling without the model stack. Decoding, sampling, anonymization,
+# preview encoding and the fixture generator all need only these two, and none
+# of them needs torch.
+#
+# Splitting this out is what lets CI run the decode and anonymization tests --
+# the riskiest code in the pipeline -- without paying for a ~500 MB torch
+# download on every pull request. Installing only "dev" silently skips roughly
+# forty-five tests, which is worse than not having them.
+media = [
+    "pillow>=11.0,<12.0",
+    # PyAV bundles its own FFmpeg libraries, so nothing needs a system FFmpeg.
+    "av>=13.0,<18.0",
+]
 ml = [
+    # "media" is repeated verbatim rather than self-referenced as
+    # "scene-search-p-081[media]". The self-reference works on modern pip, but a
+    # resolution failure would break every developer's install on day one, and
+    # duplicating two lines is cheaper than that risk.
+    # test_ml_extra_includes_media_extra asserts the two stay in sync.
+    "pillow>=11.0,<12.0",
+    "av>=13.0,<18.0",
     "torch>=2.5,<3.0",
     "torchvision>=0.20,<1.0",
-    "ultralytics>=8.3,<9.0",
     "open-clip-torch>=2.30,<4.0",
+    # SigLIP's text tower uses a HuggingFace tokenizer ("hf_tokenizer_name":
+    # "timm/ViT-B-16-SigLIP" in open_clip's model config), and open_clip declares
+    # transformers only under its optional "training" extra. Without these two,
+    # image embedding works and *text* embedding raises ImportError -- which
+    # would break query encoding, and therefore search, while leaving ingestion
+    # apparently healthy.
+    "transformers>=4.45,<6.0",
+    "sentencepiece>=0.2,<1.0",
+    "sentence-transformers>=3.0,<6.0",
+    # Object metadata comes from the selected corpus's ground-truth tracks, so
+    # no detector runs on the critical path. Ultralytics is retained only for
+    # the optional model-based anonymizer (ADR-0003) and unlabeled corpora.
+    "ultralytics>=8.3,<9.0",
 ]
 dev = [
     "httpx>=0.28,<1.0",
@@ -43,13 +77,14 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = [
-    "agents*",
     "api*",
+    "auth*",
     "core*",
     "db*",
+    "eval*",
     "infrastructure*",
     "ml*",
-    "models*",
+    "pipelines*",
     "repositories*",
     "schemas*",
     "search*",
@@ -74,7 +109,23 @@ extend-exclude = ["db/migrations"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"eval/evaluate_qwen.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+[tool.basedpyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"

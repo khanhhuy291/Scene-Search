@@ -16,23 +16,7 @@ class TaskStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     RETRYING = "retrying"
-
-
-class IngestionTaskCreate(BaseModel):
-    """Request to ingest a local video path or an HTTP(S) video URL."""
-
-    model_config = ConfigDict(str_strip_whitespace=True)
-
-    video_path: str = Field(min_length=1, max_length=4096)
-
-    @field_validator("video_path")
-    @classmethod
-    def validate_video_location(cls, value: str) -> str:
-        if value.startswith(("http://", "https://")):
-            return value
-        if "://" in value:
-            raise ValueError("video_path must be a local path or an HTTP(S) URL")
-        return value
+    CANCELLED = "cancelled"
 
 
 class TaskStatusResponse(BaseModel):
@@ -46,8 +30,26 @@ class TaskStatusResponse(BaseModel):
     progress: int = Field(default=0, ge=0, le=100)
     result: dict[str, Any] | None = None
     error: str | None = None
+    error_code: str | None = None
+    video_id: str | None = None
+    celery_task_id: str | None = None
+    pipeline_version: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    @field_validator("task_id", "video_id", mode="before")
+    @classmethod
+    def stringify_uuid(cls, value: Any) -> Any:
+        return str(value) if value is not None else value
 
-__all__ = ["IngestionTaskCreate", "TaskStatus", "TaskStatusResponse"]
+
+class TaskStatusPage(BaseModel):
+    items: list[TaskStatusResponse] = Field(default_factory=list)
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
+
+
+__all__ = ["TaskStatus", "TaskStatusPage", "TaskStatusResponse"]

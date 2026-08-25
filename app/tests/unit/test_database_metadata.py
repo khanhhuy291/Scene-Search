@@ -12,6 +12,12 @@ def test_ingestion_task_is_registered_for_alembic_autogeneration() -> None:
         "progress",
         "result",
         "error",
+        "error_code",
+        "video_id",
+        "celery_task_id",
+        "pipeline_version",
+        "started_at",
+        "finished_at",
         "created_at",
         "updated_at",
     }

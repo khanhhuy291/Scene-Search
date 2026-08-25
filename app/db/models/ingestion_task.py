@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, SmallInteger, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, SmallInteger, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +30,14 @@ class IngestionTask(Base):
     progress: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
     result: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    video_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("videos.id", ondelete="SET NULL"), nullable=True
+    )
+    celery_task_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pipeline_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

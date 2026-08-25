@@ -1,267 +1,176 @@
-"""Semantic scene search and video streaming API endpoints."""
+"""Semantic scene-search endpoint.
+
+Maps the retrieval outcome onto the response contract in
+:mod:`schemas.search`. Two mappings are worth stating because they are the ones a
+reader is most likely to assume differently:
+
+``total`` counts **videos**, not keyframes. Results are one per video, so a total
+that counted keyframes would disagree with the list it describes and would tell
+an engineer sizing a training set the wrong number. The keyframe count is
+reported separately.
+
+``thumbnail_url`` points at this API rather than at object storage. A presigned
+URL would require the browser to reach the object store directly, which it
+generally cannot, and would put a credentialed URL in the page. The proxy in
+:mod:`api.v1.media` keeps the URL stable, relative, and cacheable.
+"""
 
 from __future__ import annotations
 
-import math
-import os
-import re
-from pathlib import Path
-from typing import Any
+from fastapi import APIRouter, HTTPException, status
+from loguru import logger
 
-from fastapi import APIRouter, HTTPException, Query, status
-from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from core.config import get_settings
+from schemas.search import SearchRequest, SearchResponse, SearchResult
+from search.cursor import CursorError
+from search.engine import SearchOutcome, VideoMatch, get_search_engine
 
-from search.hybrid import HybridQdrantSearchEngine
+router = APIRouter(prefix="/search", tags=["search"])
 
-router = APIRouter(prefix="", tags=["search"])
-
-_search_engine: HybridQdrantSearchEngine | None = None
-
-
-def get_search_engine() -> HybridQdrantSearchEngine:
-    global _search_engine
-    if _search_engine is None:
-        _search_engine = HybridQdrantSearchEngine()
-    return _search_engine
+# Keyframes are instants, but a result the user can watch needs a span, so each
+# one is presented as a short window opening at the matched moment. This is a
+# presentation default, not a claim that the index stores segments.
+KEYFRAME_WINDOW_S = 4.0
 
 
-class SearchApiRequest(BaseModel):
-    query: str = Field(..., min_length=1, max_length=1000)
-    limit: int = Field(default=12, ge=1, le=100)
-    alpha_visual: float = Field(default=0.5, ge=0.0, le=1.0)
-    alpha_text: float = Field(default=0.5, ge=0.0, le=1.0)
-    video_id: str | None = None
+def _to_result(match: VideoMatch) -> SearchResult:
+    keyframe = match.keyframe
+    end_timestamp = keyframe.end_timestamp_s or (keyframe.timestamp_s + KEYFRAME_WINDOW_S)
+    objects_list: list[str] = []
+    if keyframe.retrieval_tags:
+        objects_list.extend(keyframe.retrieval_tags)
+    if keyframe.vehicles:
+        objects_list.extend(keyframe.vehicles)
+    if keyframe.people:
+        objects_list.extend(keyframe.people)
+    objects_list.extend(value for value in keyframe.objects if value not in objects_list)
 
-
-def _format_timestamp(seconds: float) -> str:
-    start_sec = max(0, int(seconds))
-    end_sec = start_sec + 5
-    m1, s1 = divmod(start_sec, 60)
-    m2, s2 = divmod(end_sec, 60)
-    return f"{m1:02d}:{s1:02d} - {m2:02d}:{s2:02d}"
-
-
-def _extract_title(caption: str, video_id: str) -> str:
-    if not caption:
-        return f"Scene in {video_id}"
-    sentences = re.split(r"[.!?]", caption)
-    first_sent = sentences[0].strip()
-    if len(first_sent) > 80:
-        return first_sent[:77] + "..."
-    return first_sent or f"Scene in {video_id}"
-
-
-def _extract_tags(caption: str) -> list[str]:
-    common_words = {
-        "this", "is", "a", "an", "the", "view", "from", "in", "on", "of", "and",
-        "with", "to", "for", "at", "by", "scene", "video", "dashcam", "camera",
-        "looking", "captured", "driving", "street", "road"
-    }
-    words = re.findall(r"\b[a-zA-Z]{3,}\b", caption.lower())
-    filtered = [w for w in words if w not in common_words]
-    unique_tags: list[str] = []
-    for w in filtered:
-        if w not in unique_tags:
-            unique_tags.append(w)
-        if len(unique_tags) >= 5:
-            break
-    return unique_tags or ["video", "scene"]
-
-
-@router.post("/search")
-async def search_scenes_post(payload: SearchApiRequest) -> dict[str, Any]:
-    return await _execute_search(
-        query=payload.query,
-        limit=payload.limit,
-        alpha_visual=payload.alpha_visual,
-        alpha_text=payload.alpha_text,
-    )
-
-
-@router.get("/search")
-async def search_scenes_get(
-    query: str = Query(..., min_length=1),
-    limit: int = Query(12, ge=1, le=100),
-    alpha_visual: float = Query(0.5, ge=0.0, le=1.0),
-    alpha_text: float = Query(0.5, ge=0.0, le=1.0),
-) -> dict[str, Any]:
-    return await _execute_search(
-        query=query,
-        limit=limit,
-        alpha_visual=alpha_visual,
-        alpha_text=alpha_text,
-    )
-
-
-async def _execute_search(
-    query: str,
-    limit: int,
-    alpha_visual: float,
-    alpha_text: float,
-) -> dict[str, Any]:
-    engine = get_search_engine()
-    raw_results = await engine.search(
-        query_text=query,
-        top_k=limit,
-        alpha_visual=alpha_visual,
-        alpha_text=alpha_text,
-    )
-
-    formatted_scenes: list[dict[str, Any]] = []
-    for item in raw_results:
-        caption = item.get("qwen_caption", "")
-        sec = float(item.get("timestamp_sec", 0.0))
-        vid = item.get("video_id", "")
-        vpath = item.get("video_path", "")
-
-        # Score calculation in hybrid.py is RRF raw score * 100
-        # Convert RRF score (around 0.01-0.03) or normalized score to display percentage (70-98%)
-        raw_score = float(item.get("score", 0.0))
-        # RRF formula gives values around 1/60 ~ 0.016. If multiplied by 100 in hybrid.py, raw_score is ~ 0.8 - 2.5
-        display_score = round(min(99.9, max(65.0, raw_score * 45.0 + 45.0)), 1)
-
-        minio_kf_key = item.get("minio_keyframe_key") or item.get("minio_thumbnail_key") or ""
-        thumbnail_url = (
-            f"/api/v1/assets/thumbnail?video_id={vid}&timestamp_sec={sec}&key={minio_kf_key}"
-        )
-
-        formatted_scenes.append(
+    return SearchResult(
+        id=keyframe.point_id,
+        video_id=keyframe.video_id,
+        granularity=keyframe.granularity,
+        ts_start_s=keyframe.timestamp_s,
+        ts_end_s=end_timestamp,
+        video_second=keyframe.timestamp_s,
+        score=match.score,
+        thumbnail_url=(
+            f"/api/v1/media/thumbnail/{keyframe.point_id}" if keyframe.has_thumbnail else None
+        ),
+        preview_url=(f"/api/v1/media/clip/{keyframe.point_id}" if keyframe.video_key else None),
+        caption=keyframe.caption or None,
+        frame_no=keyframe.frame_no if keyframe.frame_no >= 0 else None,
+        objects=objects_list,
+        weather=keyframe.weather,
+        time_of_day=keyframe.time_of_day,
+        scene_type=keyframe.scene_type,
+        retrieval_tags=list(keyframe.retrieval_tags),
+        metadata=keyframe.metadata,
+        keyframes_matched=match.keyframes_matched,
+        keyframes_in_video=match.keyframes_in_video,
+        contradicting_moments=match.contradicting_moments,
+        confirmed=list(match.confirmed),
+        denied=list(match.denied),
+        matched_moments=[
             {
-                "id": item.get("id"),
-                "video_id": vid,
-                "videoName": Path(vpath).name if vpath else f"{vid}.mov",
-                "video_path": vpath,
-                "title": _extract_title(caption, vid),
-                "description": caption,
-                "timestamp": _format_timestamp(sec),
-                "timestamp_sec": sec,
-                "frame_no": item.get("frame_no", -1),
-                "score": display_score,
-                "visual_score": round(item.get("visual_score", 0.0), 4),
-                "text_score": round(item.get("text_score", 0.0), 4),
-                "tags": _extract_tags(caption),
-                "thumbnail": thumbnail_url,
-                "video_url": f"/api/v1/videos/stream?video_id={vid}#t={sec}",
+                "id": moment.point_id,
+                "timestamp_s": moment.timestamp_s,
+                "ts_start_s": moment.timestamp_s,
+                "ts_end_s": moment.end_timestamp_s or (moment.timestamp_s + KEYFRAME_WINDOW_S),
+                "granularity": moment.granularity,
+                "video_second": moment.timestamp_s,
+                "caption": moment.caption,
+                "frame_no": moment.frame_no if moment.frame_no >= 0 else None,
+                "weather": moment.weather,
+                "time_of_day": moment.time_of_day,
+                "scene_type": moment.scene_type,
+                "retrieval_tags": list(moment.retrieval_tags),
+                "is_primary": moment.point_id == keyframe.point_id,
+                "thumbnail_url": (
+                    f"/api/v1/media/thumbnail/{moment.point_id}" if moment.has_thumbnail else None
+                ),
             }
-        )
-
-    return {
-        "query": query,
-        "results": formatted_scenes,
-        "total": len(formatted_scenes),
-    }
-
-
-@router.get("/assets/thumbnail")
-async def stream_thumbnail(
-    key: str | None = Query(None),
-    video_id: str | None = Query(None),
-    timestamp_sec: float = Query(0.0),
-) -> Response:
-    from fastapi.responses import Response
-    from infrastructure.minio import get_minio_storage
-
-    # 1. Try fetching from MinIO if key is provided
-    if key and key.strip():
-        storage = get_minio_storage()
-        try:
-            res = storage.client.get_object(storage.bucket, key.strip())
-            data = res.read()
-            res.close()
-            res.release_conn()
-            return Response(
-                content=data,
-                media_type="image/jpeg",
-                headers={"Cache-Control": "public, max-age=86400"},
-            )
-        except Exception:
-            pass
-
-    # 2. Dynamic keyframe extraction from video on disk via OpenCV
-    if video_id and video_id.strip():
-        video_dir = Path("/home/sysadmin/vin/videos/videos/train")
-        matches = list(video_dir.glob(f"{video_id.strip()}.*"))
-        if matches:
-            target_path = matches[0]
-            import cv2
-            cap = cv2.VideoCapture(str(target_path))
-            if cap.isOpened():
-                fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-                frame_index = int(timestamp_sec * fps)
-                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-                ret, frame = cap.read()
-                cap.release()
-                if ret and frame is not None:
-                    ret_jpg, jpeg_buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                    if ret_jpg:
-                        return Response(
-                            content=jpeg_buf.tobytes(),
-                            media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=86400"},
-                        )
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Thumbnail asset not found for key '{key}' or video_id '{video_id}'",
+            for moment in match.matched_keyframes
+        ],
+        score_breakdown=dict(match.signals) or None,
     )
 
 
-@router.get("/videos/stream")
-async def stream_video(video_id: str = Query(...)) -> FileResponse:
-    # Resolve video path
-    video_dir = Path("/home/sysadmin/vin/videos/videos/train")
-    target_path = video_dir / f"{video_id}.mov"
-
-    if not target_path.exists():
-        # Check alternative extensions or paths
-        matches = list(video_dir.glob(f"{video_id}.*"))
-        if matches:
-            target_path = matches[0]
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Video file for '{video_id}' not found on server",
-            )
-
-    return FileResponse(
-        path=target_path,
-        media_type="video/mp4",
-        headers={"Accept-Ranges": "bytes"},
+def _to_response(request: SearchRequest, outcome: SearchOutcome) -> SearchResponse:
+    return SearchResponse(
+        query=request.query,
+        filters_applied=request.filters,
+        results=[_to_result(match) for match in outcome.matches],
+        total=outcome.total_videos,
+        total_keyframes=outcome.total_keyframes,
+        interpreted_query=outcome.parsed.semantic_text,
+        required_concepts=list(outcome.parsed.required),
+        excluded_concepts=list(outcome.parsed.excluded),
+        unmatched_terms=list(outcome.parsed.unmatched_exclusions),
+        exhaustive=outcome.exhaustive,
+        signals_used=list(outcome.signals_used),
+        similarity_floor=outcome.similarity_floor,
+        below_threshold=outcome.below_threshold,
+        degraded=outcome.degraded,
+        unconfirmed_concepts=list(outcome.unconfirmed_concepts),
+        next_cursor=outcome.next_cursor,
+        took_ms=outcome.took_ms,
+        model_version=get_settings().ml.model_version,
     )
 
 
-@router.get("/admin/stats")
-async def get_admin_stats() -> dict[str, Any]:
-    from infrastructure.qdrant import get_qdrant_client
-    from core.config import get_settings
-    client = get_qdrant_client()
-    settings = get_settings().qdrant
+@router.post("", response_model=SearchResponse, summary="Search scenes by description")
+async def search_scenes(request: SearchRequest) -> SearchResponse:
+    """Find keyframes matching a natural-language description.
 
-    qdrant_points = 0
-    qdrant_status = "ok"
+    Returns one result per video -- the best keyframe that satisfies the query --
+    so twenty results mean twenty different clips. When the query names a concept
+    the search knows, the result set is complete rather than a top-k sample, and
+    ``exhaustive`` says which of the two happened.
+
+    An empty list is a real answer here, not a failure: a subject this corpus does
+    not contain returns nothing, with ``below_threshold`` set, rather than the
+    nearest unrelated footage. Check that field before reporting "no results" so
+    the reason reaches the user.
+    """
+
+    search_settings = get_settings().search
+    effective_mode = request.mode
+    if effective_mode is None or (effective_mode == "hybrid" and search_settings.mode != "hybrid"):
+        effective_mode = search_settings.mode
+
+    engine = get_search_engine()
     try:
-        if await client.collection_exists(settings.collection):
-            info = await client.get_collection(settings.collection)
-            qdrant_points = info.points_count or 0
+        outcome = await engine.search(
+            request.query,
+            limit=request.limit,
+            cursor=request.cursor,
+            mode=effective_mode,
+            filters=request.filters,
+            granularity=request.granularity,
+            video_ids=request.filters.video_ids,
+            min_score=request.min_score,
+            explain=request.explain,
+            require=request.require,
+            exclude=request.exclude,
+            agentic=request.agentic,
+            rerank=request.rerank,
+        )
+    except CursorError as exc:
+        # A stale or foreign cursor is a bad request. Returning a 500 here would
+        # send the reader looking for a server fault.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     except Exception as exc:
-        qdrant_status = str(exc)
+        logger.exception("Scene search failed for query {query!r}", query=request.query)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Search is unavailable; the vector index or encoder could not be reached",
+        ) from exc
 
-    return {
-        "qdrant": {
-            "collection": settings.collection,
-            "points_count": qdrant_points,
-            "status": qdrant_status,
-            "vectors": ["siglip_visual (768d)", "bge_text (1024d)"],
-        },
-        "minio": {
-            "bucket": "scenesearch",
-            "status": "ok",
-        },
-        "system": {
-            "status": "operational",
-            "celery_queue": "ingestion",
-        },
-    }
+    return _to_response(request, outcome)
 
 
+__all__ = ["router"]

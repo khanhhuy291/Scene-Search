@@ -1,103 +1,263 @@
-import React, { useState, useEffect } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { SearchBar } from '../components/search/SearchBar'
-import { SceneGrid, MOCK_SCENES } from '../components/search/SceneGrid'
+import { SceneGrid } from '../components/search/SceneGrid'
+import { SelectionTray } from '../components/search/SelectionTray'
 import { useToast } from '../context/ToastContext'
-import { searchScenes } from '../services/api'
+import { searchScenes } from '../lib/searchApi'
+import { Terminal, Database, Layers, Sparkles } from 'lucide-react'
+
+const EMPTY_RESULT = {
+  scenes: [],
+  totalVideos: 0,
+  totalKeyframes: 0,
+  interpretedQuery: '',
+  requiredConcepts: [],
+  excludedConcepts: [],
+  unmatchedTerms: [],
+  exhaustive: false,
+  signalsUsed: [],
+  belowThreshold: false,
+  unconfirmedConcepts: [],
+  nextCursor: null,
+  tookMs: 0,
+  modelVersion: '',
+  degraded: false,
+  source: 'api'
+}
 
 export const SearchPage = () => {
   const { addToast } = useToast()
-  const [currentQuery, setCurrentQuery] = useState('')
-  const [scenes, setScenes] = useState([])
+  const [searchParams, setSearchParams] = useSearchParams()
+  const urlQuery = searchParams.get('q') || ''
+  const [currentQuery, setCurrentQuery] = useState(urlQuery)
+  const [result, setResult] = useState(EMPTY_RESULT)
   const [isSearching, setIsSearching] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [error, setError] = useState(null)
   const [hasSearched, setHasSearched] = useState(false)
+  const [searchOptions, setSearchOptions] = useState({ mode: 'hybrid', limit: 24 })
 
-  // Perform initial default search on load
-  useEffect(() => {
-    handleSearch('city street driving', { initial: true })
-  }, [])
+  const [overrides, setOverrides] = useState({ require: null, exclude: null })
 
-  const handleSearch = async (queryText, options = {}) => {
-    if (!queryText || !queryText.trim()) return
+  const activeRequest = useRef(null)
 
-    setCurrentQuery(queryText)
-    setIsSearching(true)
+  useEffect(() => () => activeRequest.current?.abort(), [])
 
-    try {
-      const data = await searchScenes({
-        query: queryText,
-        limit: 12,
-      })
+  const runSearch = useCallback(
+    async (queryText, options = {}) => {
+      const trimmed = queryText.trim()
+      if (!trimmed) return
 
-      setIsSearching(false)
-      setHasSearched(true)
+      activeRequest.current?.abort()
+      const controller = new AbortController()
+      activeRequest.current = controller
 
-      if (data.results && data.results.length > 0) {
-        setScenes(data.results)
-        if (!options.initial) {
-          addToast(`Found ${data.results.length} Qdrant scene vectors for "${queryText}"`, 'success')
+      const mode = options.mode ?? searchOptions.mode
+      const limit = options.limit ?? searchOptions.limit
+      setSearchOptions({ mode, limit })
+
+      setIsSearching(true)
+      setError(null)
+      setCurrentQuery(trimmed)
+
+      try {
+        const next = await searchScenes({
+          query: trimmed,
+          mode,
+          limit,
+          require: options.require ?? null,
+          exclude: options.exclude ?? null,
+          signal: controller.signal
+        })
+        setResult(next)
+        setHasSearched(true)
+
+        if (next.totalVideos === 0) {
+          addToast(
+            next.belowThreshold
+              ? `Nothing in this corpus resembles "${trimmed}"`
+              : `No scenes matched "${trimmed}"`,
+            'info'
+          )
+        } else {
+          const scope = next.exhaustive
+            ? `all ${next.totalVideos} matching videos`
+            : `${next.totalVideos} matching videos`
+          addToast(`Found ${scope} (${next.totalKeyframes} keyframes)`, 'success')
         }
-      } else {
-        setScenes([])
-        if (!options.initial) {
-          addToast(`No matching vector scenes found for "${queryText}"`, 'info')
+        if (next.unmatchedTerms.length > 0) {
+          addToast(
+            `Could not enforce: ${next.unmatchedTerms.join(', ')}. Handled by similarity only.`,
+            'info'
+          )
+        }
+      } catch (caught) {
+        if (caught.name === 'AbortError') return
+        setError(caught.message)
+        setResult(EMPTY_RESULT)
+        setHasSearched(true)
+        addToast(caught.message, 'error')
+      } finally {
+        if (activeRequest.current === controller) {
+          activeRequest.current = null
+          setIsSearching(false)
         }
       }
-    } catch (err) {
-      console.error('Qdrant Search API Error:', err)
-      setIsSearching(false)
-      setHasSearched(true)
+    },
+    [addToast, searchOptions.limit, searchOptions.mode]
+  )
 
-      // Fallback to local filter if backend error occurs
-      const filtered = MOCK_SCENES.filter(
-        (s) =>
-          s.title.toLowerCase().includes(queryText.toLowerCase()) ||
-          s.description.toLowerCase().includes(queryText.toLowerCase()) ||
-          s.tags.some((t) => t.toLowerCase().includes(queryText.toLowerCase()))
-      )
-      setScenes(filtered.length > 0 ? filtered : MOCK_SCENES)
-      addToast(`API error: ${err.message}. Showing local preview data.`, 'warning')
+  useEffect(() => {
+    if (urlQuery && urlQuery !== currentQuery) {
+      setCurrentQuery(urlQuery)
+      runSearch(urlQuery)
+    } else if (urlQuery && !hasSearched) {
+      runSearch(urlQuery)
+    }
+  }, [urlQuery, runSearch])
+
+  const handleSearch = (queryText, options = {}) => {
+    const trimmed = queryText.trim()
+    setOverrides({ require: null, exclude: null })
+    if (trimmed) {
+      setSearchParams({ q: trimmed })
+    }
+    runSearch(trimmed, options)
+  }
+
+  const handleOptionsChange = (options) => {
+    setSearchOptions((prev) => ({ ...prev, ...options }))
+    if (!hasSearched || !currentQuery) return
+    runSearch(currentQuery, {
+      ...options,
+      require: overrides.require,
+      exclude: overrides.exclude
+    })
+  }
+
+  const handleLoadMore = async () => {
+    if (!result.nextCursor || isLoadingMore) return
+    setIsLoadingMore(true)
+    try {
+      const next = await searchScenes({
+        query: currentQuery,
+        cursor: result.nextCursor,
+        mode: searchOptions.mode,
+        limit: searchOptions.limit,
+        require: overrides.require ?? undefined,
+        exclude: overrides.exclude ?? undefined
+      })
+      setResult((previous) => ({
+        ...next,
+        scenes: [...previous.scenes, ...next.scenes]
+      }))
+    } catch (caught) {
+      addToast(caught.message, 'error')
+    } finally {
+      setIsLoadingMore(false)
     }
   }
 
+  const handleRemoveConcept = (kind, concept) => {
+    const nextRequire = (overrides.require ?? result.requiredConcepts).filter(
+      (item) => kind !== 'require' || item !== concept
+    )
+    const nextExclude = (overrides.exclude ?? result.excludedConcepts).filter(
+      (item) => kind !== 'exclude' || item !== concept
+    )
+    setOverrides({ require: nextRequire, exclude: nextExclude })
+    runSearch(currentQuery, {
+      require: nextRequire,
+      exclude: nextExclude,
+      mode: searchOptions.mode,
+      limit: searchOptions.limit
+    })
+  }
+
+  const searchMeta = {
+    query: currentQuery,
+    requiredConcepts: result.requiredConcepts,
+    excludedConcepts: result.excludedConcepts,
+    modelVersion: result.modelVersion
+  }
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-16 animate-fadeIn pb-24">
-      {/* Hero Banner Header */}
-      <div className="text-center space-y-4 max-w-4xl mx-auto pt-6">
-        <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-white dark:bg-[#25211e] border border-stone-200 dark:border-[#403933] text-stone-700 dark:text-[#a8c0b0] text-xs font-sans font-bold tracking-widest uppercase shadow-2xs">
-          <img src="/brand/logo-primary.jpg" alt="" className="w-6 h-6 rounded-full object-cover" />
-          <span>ELEGANT AI LAB • QDRANT VECTOR ENGINE (21,979 SCENES)</span>
+    <div className="max-w-[1700px] mx-auto px-4 sm:px-8 py-10 space-y-12 animate-fadeIn pb-36 font-sans">
+      {/* Top Banner / Hero Area */}
+      <div className="text-center space-y-4 max-w-4xl mx-auto pt-4">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-white dark:bg-stone-900 border-2 border-black font-mono text-[11px] font-black uppercase tracking-wider shadow-[2px_2px_0px_0px_#000]">
+          <Terminal className="w-3.5 h-3.5 text-[#FF5500]" />
+          <span>NEURAL VECTOR SEARCH // QDRANT HNSW + ViT CLIP</span>
         </div>
 
-        {/* Main Title */}
-        <img
-          src="/brand/logo-primary.jpg"
-          alt="SceneSearch"
-          className="w-36 h-36 sm:w-44 sm:h-44 mx-auto rounded-full object-cover drop-shadow-xl"
-        />
-        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-serif text-stone-950 dark:text-[#f3ece4] tracking-tighter uppercase font-normal leading-none">
-          SCENESEARCH
+        <h1 className="text-4xl sm:text-6xl font-black tracking-tight text-black dark:text-white uppercase leading-none">
+          SEARCH <span className="text-[#FF5500]">MULTIMODAL</span> SCENES
         </h1>
 
-        <p className="text-stone-600 dark:text-[#a99d92] text-sm font-sans tracking-widest uppercase max-w-xl mx-auto font-medium">
-          Multimodal Video Intelligence & Hybrid Vector Scene Retrieval
+        <p className="text-stone-700 dark:text-stone-300 text-sm font-sans max-w-xl mx-auto font-medium">
+          Query cinematic moments, visual semantic layers, and temporal frame sequences instantly with sub-10ms neural embeddings.
         </p>
-      </div>
 
-      {/* Search Bar Component */}
-      <SearchBar onSearch={handleSearch} isSearching={isSearching} />
-
-      {/* Results Grid Component */}
-      <SceneGrid scenes={scenes} query={currentQuery} isSearching={isSearching} hasSearched={hasSearched} />
-
-      {/* Unique Scroll Element at bottom */}
-      <div className="flex flex-col items-center justify-center pt-12 space-y-2 text-stone-400 dark:text-[#847970]">
-        <span className="text-[10px] font-sans font-bold tracking-widest uppercase text-stone-500 dark:text-[#a99d92]">
-          SCROLL
-        </span>
-        <div className="w-[1.5px] h-12 bg-stone-300 dark:bg-[#332e2a] relative overflow-hidden">
-          <div className="w-full h-full bg-orange-700 dark:bg-[#789b86] animate-scroll-line" />
+        {/* Feature Badges */}
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2 font-mono text-[11px] font-bold">
+          <span className="px-2.5 py-1 bg-[#EFECE3] dark:bg-stone-800 border border-black text-black dark:text-white flex items-center gap-1.5">
+            <Database className="w-3 h-3 text-[#FF5500]" /> 1.48M+ VECTORS
+          </span>
+          <span className="px-2.5 py-1 bg-[#EFECE3] dark:bg-stone-800 border border-black text-black dark:text-white flex items-center gap-1.5">
+            <Layers className="w-3 h-3 text-[#00D084]" /> ZERO-SHOT INFERENCE
+          </span>
+          <span className="px-2.5 py-1 bg-[#EFECE3] dark:bg-stone-800 border border-black text-black dark:text-white flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3 text-[#FFD700]" /> TEMPORAL KEYFRAMES
+          </span>
         </div>
       </div>
+
+      {/* Search Input Bar */}
+      <SearchBar
+        initialQuery={currentQuery}
+        onSearch={handleSearch}
+        onOptionsChange={handleOptionsChange}
+        isSearching={isSearching}
+      />
+
+      {/* Error state */}
+      {error && (
+        <div className="max-w-4xl mx-auto p-5 bg-red-100 dark:bg-red-950/50 border-2 border-red-600 text-center space-y-1 font-mono shadow-[4px_4px_0px_0px_#000]">
+          <p className="text-sm font-black uppercase text-red-900 dark:text-red-300">
+            SEARCH UNAVAILABLE // API EXCEPTION
+          </p>
+          <p className="text-xs text-red-700 dark:text-red-400">{error}</p>
+        </div>
+      )}
+
+      {/* Search Results Grid */}
+      {hasSearched && !error && (
+        <SceneGrid
+          scenes={result.scenes}
+          query={currentQuery}
+          result={result}
+          searchMeta={searchMeta}
+          isSearching={isSearching}
+          isLoadingMore={isLoadingMore}
+          onLoadMore={handleLoadMore}
+          onRemoveConcept={handleRemoveConcept}
+        />
+      )}
+
+      {/* Empty / Initial State */}
+      {!hasSearched && !error && (
+        <div className="text-center space-y-3 max-w-xl mx-auto p-8 bg-white dark:bg-[#1C1A17] border-2 border-black shadow-[4px_4px_0px_0px_#000] font-mono">
+          <p className="text-sm font-bold text-black dark:text-white uppercase">
+            [READY // AWAITING QUERY INPUT]
+          </p>
+          <p className="text-xs text-stone-600 dark:text-stone-400 font-sans leading-relaxed">
+            Enter a scene description above or click one of the suggested prompts to launch vector similarity search across all indexed video keyframes.
+          </p>
+        </div>
+      )}
+
+      <SelectionTray />
     </div>
   )
 }

@@ -1,103 +1,230 @@
-import React, { useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Activity, AlertTriangle, CheckCircle2, Clock3, Cpu, Database, LoaderCircle, Power, UploadCloud } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { listIngestionJobs, uploadVideo } from '../api/ingestion'
+import { getEmbeddingModelStatus, loadEmbeddingModel, unloadEmbeddingModel } from '../api/admin'
+import { JobTable } from '../components/ingestion/JobTable'
 import { VideoDropzone } from '../components/ingestion/VideoDropzone'
-import { TaskProgressTracker } from '../components/ingestion/TaskProgressTracker'
-import { Video, CheckCircle2 } from 'lucide-react'
+import { useToast } from '../context/ToastContext'
+import { useAuth } from '../context/AuthContext'
 
 export const IngestionPage = () => {
-  const [activeTask, setActiveTask] = useState(null)
-  const [completedTasks, setCompletedTasks] = useState([
-    {
-      id: 'task_88201',
-      filename: 'cyberpunk_neon_city_4k.mp4',
-      size: '248.5 MB',
-      scenes: 42,
-      time: '10 mins ago'
-    },
-    {
-      id: 'task_88200',
-      filename: 'developer_workspace_vlog.mp4',
-      size: '182.1 MB',
-      scenes: 28,
-      time: '45 mins ago'
-    }
-  ])
+  const navigate = useNavigate()
+  const { addToast } = useToast()
+  const { token } = useAuth()
+  const [jobs, setJobs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('all')
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [loadError, setLoadError] = useState('')
+  const [modelStatus, setModelStatus] = useState(null)
+  const [modelAction, setModelAction] = useState('')
+  const [modelError, setModelError] = useState('')
 
-  const handleStartIngestion = (taskPayload) => {
-    setActiveTask(taskPayload)
+  const loadJobs = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      setJobs((await listIngestionJobs({ status: filter, token })).items)
+    } catch (error) {
+      setLoadError(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [filter, token])
+
+  useEffect(() => {
+    loadJobs()
+  }, [loadJobs])
+
+  const refreshModelStatus = useCallback(async () => {
+    try {
+      setModelStatus(await getEmbeddingModelStatus(token))
+      setModelError('')
+    } catch (error) {
+      setModelError(error.message)
+    }
+  }, [token])
+
+  useEffect(() => {
+    refreshModelStatus()
+    const timer = window.setInterval(refreshModelStatus, 5000)
+    return () => window.clearInterval(timer)
+  }, [refreshModelStatus])
+
+  const changeModelState = async (action) => {
+    setModelAction(action)
+    setModelError('')
+    try {
+      const result = action === 'load'
+        ? await loadEmbeddingModel(token)
+        : await unloadEmbeddingModel(token)
+      setModelStatus(result)
+      addToast(
+        action === 'load' ? 'Qwen embedding model is ready.' : 'Qwen model unloaded; GPU memory released.',
+        'success'
+      )
+    } catch (error) {
+      setModelError(error.message)
+      addToast(error.message, 'error')
+      await refreshModelStatus()
+    } finally {
+      setModelAction('')
+    }
   }
 
-  const handleTaskComplete = () => {
-    if (activeTask) {
-      setCompletedTasks((prev) => [
-        {
-          id: activeTask.id,
-          filename: activeTask.filename,
-          size: activeTask.size,
-          scenes: 42,
-          time: 'Just now'
-        },
-        ...prev
-      ])
+  const handleUpload = async (file) => {
+    setUploading(true)
+    setUploadProgress(0)
+    try {
+      const job = await uploadVideo(file, setUploadProgress, token)
+      addToast('Upload complete. The ingestion worker has been queued.', 'success')
+      navigate(`/ingest/jobs/${job.task_id}`)
+    } catch (error) {
+      addToast(error.message, 'error')
+    } finally {
+      setUploading(false)
     }
   }
+
+  const counts = jobs.reduce(
+    (result, job) => ({ ...result, [job.status]: (result[job.status] || 0) + 1 }),
+    {}
+  )
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10 animate-fadeIn pb-24">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-stone-200 dark:border-[#403933] pb-6">
-        <div className="pl-3 orange-accent-line">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-3 py-0.5 rounded-full bg-stone-100 dark:bg-[#315c49]/12 text-orange-700 dark:text-[#a8c0b0] border border-stone-200 dark:border-[#315c49]/35 text-[10px] font-sans font-bold uppercase tracking-widest">
-              ASYNC CELERY QUEUE ACTIVE
-            </span>
+    <main className="max-w-[1700px] mx-auto px-4 sm:px-8 py-10 pb-32 space-y-8 animate-fadeIn font-sans">
+      {/* Header */}
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-5 border-b-2 border-black pb-6">
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 bg-white dark:bg-stone-900 border border-black font-mono text-[10px] font-black uppercase text-black dark:text-white shadow-[1.5px_1.5px_0px_0px_#000]">
+            <UploadCloud className="w-3 h-3 text-[#FF5500]" />
+            <span>OPERATIONS // INGESTION PIPELINE</span>
           </div>
-          <h1 className="text-4xl sm:text-5xl font-serif font-normal text-stone-950 dark:text-[#f3ece4] uppercase tracking-tighter ">
-            VIDEO STREAM INGESTION
+          <h1 className="text-3xl sm:text-4xl font-black text-black dark:text-white uppercase tracking-tight">
+            VIDEO INGESTION MANAGEMENT
           </h1>
-          <p className="text-stone-500 dark:text-[#a99d92] text-xs font-sans tracking-widest uppercase mt-1">
-            Upload MP4 video files for keyframe extraction & Qdrant vector indexing.
+          <p className="text-xs font-mono text-stone-600 dark:text-stone-400 max-w-2xl">
+            Load Qwen3-VL on demand, upload video footage, and index 2048-dimensional scene embeddings in Qdrant.
           </p>
         </div>
+
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-stone-900 border-2 border-black font-mono text-[11px] font-bold shadow-[2px_2px_0px_0px_#000]">
+          <span className="w-2 h-2 rounded-full bg-[#00D084] animate-ping" />
+          <span className="text-black dark:text-white">POSTGRES + CELERY QUEUE // LIVE</span>
+        </div>
+      </header>
+
+      {/* Metrics Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
+        {[
+          ['TOTAL JOBS', jobs.length, Database, '#FF5500'],
+          ['IN PROGRESS', (counts.processing || 0) + (counts.retrying || 0), Activity, '#FFD700'],
+          ['COMPLETED', counts.completed || 0, CheckCircle2, '#00D084'],
+          ['NEEDS ATTENTION', counts.failed || 0, AlertTriangle, '#EF4444']
+        ].map(([label, value, Icon, accentColor]) => (
+          <div
+            key={label}
+            className="bg-white dark:bg-[#1C1A17] border-2 border-black shadow-[4px_4px_0px_0px_#000] p-5 space-y-2"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-stone-500">
+                {label}
+              </span>
+              <Icon className="w-4 h-4" style={{ color: accentColor }} />
+            </div>
+            <p className="text-3xl font-black text-black dark:text-white tracking-tight">{value}</p>
+          </div>
+        ))}
       </div>
 
-      <VideoDropzone onStartIngestion={handleStartIngestion} />
+      {/* Qwen model lifecycle */}
+      <section className="bg-white dark:bg-[#1C1A17] border-3 border-black shadow-[6px_6px_0px_0px_#000] p-5 font-mono">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-11 h-11 border-2 border-black flex items-center justify-center ${
+              ['ready', 'busy'].includes(modelStatus?.state) ? 'bg-[#00D084]' : 'bg-stone-200 dark:bg-stone-700'
+            }`}>
+              <Cpu className="w-6 h-6 text-black" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase text-stone-500">GPU MODEL LIFECYCLE</p>
+              <h2 className="text-lg font-black uppercase text-black dark:text-white">
+                QWEN3-VL EMBEDDING · {modelStatus?.state?.toUpperCase() || 'UNKNOWN'}
+              </h2>
+              <p className="text-[11px] text-stone-500">
+                {modelStatus?.gpu_memory_reserved_mb != null
+                  ? `CUDA reserved: ${modelStatus.gpu_memory_reserved_mb} MB · 2048 dimensions`
+                  : 'Load the model before starting ingestion or Qwen search.'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={modelAction || ['loading', 'unloading', 'busy'].includes(modelStatus?.state)}
+            onClick={() => changeModelState(['ready', 'busy'].includes(modelStatus?.state) ? 'unload' : 'load')}
+            className={`px-5 py-3 border-2 border-black font-black text-xs uppercase flex items-center justify-center gap-2 shadow-[3px_3px_0px_0px_#000] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
+              ['ready', 'busy'].includes(modelStatus?.state)
+                ? 'bg-red-100 text-red-900 hover:bg-red-600 hover:text-white'
+                : 'bg-[#00D084] text-black hover:bg-black hover:text-white'
+            }`}
+          >
+            {modelAction ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
+            {modelAction === 'load' ? 'LOADING MODEL…' : modelAction === 'unload' ? 'UNLOADING…' : ['ready', 'busy'].includes(modelStatus?.state) ? 'UNLOAD MODEL' : 'LOAD MODEL'}
+          </button>
+        </div>
+        {modelError && (
+          <p className="mt-4 p-3 border-2 border-red-600 bg-red-100 dark:bg-red-950/40 text-xs font-bold text-red-900 dark:text-red-300">
+            {modelError}
+          </p>
+        )}
+      </section>
 
-      {activeTask && (
-        <TaskProgressTracker activeTask={activeTask} onComplete={handleTaskComplete} />
+      {/* Video Upload Dropzone */}
+      <VideoDropzone
+        onUpload={handleUpload}
+        uploading={uploading}
+        uploadProgress={uploadProgress}
+        disabled={!['ready', 'busy'].includes(modelStatus?.state)}
+      />
+
+      {/* Status Filter Buttons */}
+      <div className="flex flex-wrap gap-2 font-mono text-xs">
+        {['all', 'queued', 'processing', 'completed', 'failed'].map((status) => (
+          <button
+            type="button"
+            key={status}
+            onClick={() => setFilter(status)}
+            className={`px-4 py-2 border-2 font-black uppercase transition-all cursor-pointer ${
+              filter === status
+                ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_#FF5500]'
+                : 'bg-white dark:bg-stone-800 text-black dark:text-stone-200 border-black/60 hover:border-black hover:bg-black hover:text-white'
+            }`}
+          >
+            [{status.toUpperCase()}]
+          </button>
+        ))}
+      </div>
+
+      {/* Error Banner */}
+      {loadError && (
+        <div className="p-4 bg-red-100 dark:bg-red-950/40 border-2 border-red-600 font-mono text-xs font-bold text-red-900 dark:text-red-300 flex items-center gap-3 shadow-[3px_3px_0px_0px_#000]">
+          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+          <span className="flex-1">{loadError}</span>
+          <button onClick={loadJobs} className="font-black underline uppercase cursor-pointer">
+            RETRY
+          </button>
+        </div>
       )}
 
-      {/* History List */}
-      <div className="bg-white dark:bg-[#25211e]/95 p-8 rounded-3xl border border-stone-200 dark:border-[#403933] shadow-2xs space-y-4">
-        <div className="flex items-center justify-between border-b border-stone-100 dark:border-[#403933] pb-4">
-          <h3 className="text-xl font-serif font-normal text-stone-950 dark:text-[#f3ece4] uppercase tracking-tight flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-700 dark:text-[#789b86]" />
-            RECENTLY INDEXED VIDEOS
-          </h3>
-          <span className="text-xs font-mono text-stone-500 dark:text-[#a99d92]">{completedTasks.length} Videos Ingested</span>
-        </div>
+      {/* Jobs Table */}
+      <JobTable jobs={jobs} loading={loading} onRefresh={loadJobs} />
 
-        <div className="divide-y divide-stone-100 dark:divide-[#403933]">
-          {completedTasks.map((item) => (
-            <div key={item.id} className="py-3 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-full bg-stone-100 dark:bg-[#332e2a] border border-stone-200 dark:border-[#514841] text-orange-700 dark:text-[#789b86]">
-                  <Video className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-stone-950 dark:text-[#ded3c8]">{item.filename}</div>
-                  <div className="text-xs text-stone-500 dark:text-[#a99d92] font-mono">
-                    {item.size} • {item.scenes} Scenes • {item.time}
-                  </div>
-                </div>
-              </div>
-
-              <span className="px-3 py-1 rounded-full bg-stone-100 dark:bg-[#315c49]/18 border border-stone-200 dark:border-[#456f5b]/45 text-orange-700 dark:text-[#789b86] text-xs font-mono font-bold uppercase">
-                QDRANT INDEXED
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+      <p className="text-xs font-mono text-stone-500 flex items-center gap-2 pt-2">
+        <Clock3 className="w-4 h-4 text-[#FF5500]" />
+        <span>Processing jobs auto-refresh on their detail page every two seconds.</span>
+      </p>
+    </main>
   )
 }

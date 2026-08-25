@@ -1,0 +1,54 @@
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+
+const parseResponse = async (response) => {
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.detail || `Request failed (${response.status})`)
+  return payload
+}
+
+const authHeaders = (token) => (token ? { Authorization: `Bearer ${token}` } : {})
+
+export const listIngestionJobs = async ({ status, signal, token } = {}) => {
+  const query = new URLSearchParams({ limit: '50' })
+  if (status && status !== 'all') query.set('status', status)
+  const response = await fetch(`${API_BASE}/tasks?${query}`, {
+    signal,
+    headers: authHeaders(token)
+  })
+  return parseResponse(response)
+}
+
+export const getIngestionJob = async (taskId, { signal, token } = {}) => {
+  const response = await fetch(`${API_BASE}/tasks/${taskId}`, {
+    signal,
+    headers: authHeaders(token)
+  })
+  return parseResponse(response)
+}
+
+export const deleteVideo = async (videoId, token) => {
+  const response = await fetch(`${API_BASE}/videos/${videoId}`, {
+    method: 'DELETE',
+    headers: authHeaders(token)
+  })
+  return parseResponse(response)
+}
+
+export const uploadVideo = (file, onProgress, token) =>
+  new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    const form = new FormData()
+    form.append('file', file)
+    request.open('POST', `${API_BASE}/ingest/upload`)
+    request.responseType = 'json'
+    if (token) request.setRequestHeader('Authorization', `Bearer ${token}`)
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100))
+    }
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) resolve(request.response)
+      else reject(new Error(request.response?.detail || `Upload failed (${request.status})`))
+    }
+    request.onerror = () => reject(new Error('Cannot reach the ingestion API'))
+    request.send(form)
+  })

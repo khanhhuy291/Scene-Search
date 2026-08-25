@@ -40,4 +40,5 @@ celery_app.conf.update(
     worker_prefetch_multiplier=settings.worker_prefetch_multiplier,
 )
 
+
 __all__ = ["celery_app"]

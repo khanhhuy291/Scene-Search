@@ -10,19 +10,40 @@ import {
   Menu,
   X,
   Sun,
-  Moon
+  Moon,
+  FolderKanban,
+  BarChart3,
+  Download,
+  Terminal
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { useTheme } from '../../context/ThemeContext'
+import { ProfileModal } from '../auth/ProfileModal'
+
+const NAV_BY_ROLE = {
+  engineer: [
+    { name: 'SEARCH', path: '/search', icon: Search },
+    { name: 'DATASET DRAFT', path: '/datasets/draft', icon: FolderKanban },
+    { name: 'DOWNLOAD', path: '/datasets', icon: Download }
+  ],
+  admin: [
+    { name: 'INGESTION', path: '/ingest', icon: Upload },
+    { name: 'ADMIN PANEL', path: '/admin', icon: LayoutDashboard },
+    { name: 'BENCHMARKS', path: '/eval', icon: BarChart3 }
+  ]
+}
+
+const ANON_NAV = [{ name: 'SEARCH', path: '/search', icon: Search }]
 
 export const Header = () => {
-  const { user, isAuthenticated, isAdmin, logout } = useAuth()
+  const { user, isAuthenticated, logout } = useAuth()
   const { addToast } = useToast()
-  const { theme, toggleTheme, isDark } = useTheme()
+  const { toggleTheme, isDark } = useTheme()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
 
   const handleLogout = () => {
     logout()
@@ -32,53 +53,50 @@ export const Header = () => {
 
   const handleToggleTheme = () => {
     toggleTheme()
-    const nextMode = isDark ? 'Light Mode (Classic AI Lab)' : 'Dark Mode (Warm Editorial)'
+    const nextMode = isDark ? 'Brutalist Light Mode' : 'Brutalist Dark Mode'
     addToast(`Switched to ${nextMode}`, 'info')
   }
 
-  const navLinks = [
-    { name: 'SEARCH', path: '/search', icon: Search },
-    { name: 'INGEST', path: '/ingest', icon: Upload },
-    ...(isAdmin ? [{ name: 'ADMIN DASHBOARD', path: '/admin', icon: LayoutDashboard }] : [])
-  ]
+  const displayLinks = isAuthenticated
+    ? NAV_BY_ROLE[user?.role] || ANON_NAV
+    : ANON_NAV
+
+  const RoleIcon = user?.role === 'admin' ? Shield : User
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-stone-200 dark:border-[#403933] bg-[#F5F0E8]/90 dark:bg-[#181512]/90 backdrop-blur-md transition-colors duration-300">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-        {/* Brand logo */}
+    <header className="sticky top-0 z-40 w-full bg-[#F7F4EE]/95 dark:bg-[#141210]/95 backdrop-blur-md border-b-2 border-black">
+      <div className="max-w-[1700px] mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
+        {/* Left Branding & Main Navigation */}
         <div className="flex items-center gap-8">
-          <Link to="/" className="flex items-center gap-3 group">
-            <img
-              src="/brand/logo-primary.jpg"
-              alt="SceneSearch logo"
-              className="w-12 h-12 rounded-full object-cover drop-shadow-md group-hover:scale-105 transition-transform duration-300"
-            />
-            <div className="flex flex-col">
-              <span className="font-serif font-normal text-xl tracking-tighter text-stone-950 dark:text-[#f3ece4] uppercase leading-none">
-                SCENESEARCH
-              </span>
-              <span className="text-[9px] font-sans font-semibold tracking-widest text-stone-500 dark:text-[#789b86] uppercase mt-1">
-                MULTIMODAL AI LAB v2.4
-              </span>
+          <Link
+            to="/"
+            className="flex items-center gap-2 group tracking-tighter"
+            aria-label="SceneSearch Home"
+          >
+            <div className="w-8 h-8 bg-black text-white flex items-center justify-center font-mono font-black text-base border border-black shadow-[2px_2px_0px_0px_#FF5500] group-hover:bg-[#FF5500] group-hover:text-black transition-colors">
+              S
             </div>
+            <span className="font-black text-lg tracking-tight uppercase font-mono">
+              SCENESEARCH<span className="text-[#FF5500]">.AI</span>
+            </span>
           </Link>
 
-          {/* Desktop Nav Links */}
-          <nav className="hidden md:flex items-center gap-2">
-            {navLinks.map((link) => {
+          {/* Desktop Navigation Links */}
+          <nav className="hidden md:flex items-center gap-1">
+            {displayLinks.map((link) => {
               const Icon = link.icon
               const isActive = location.pathname === link.path
               return (
                 <Link
-                  key={link.path}
+                  key={link.name}
                   to={link.path}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-sans font-semibold tracking-widest transition-all ${
+                  className={`flex items-center gap-2 px-3.5 py-1.5 font-mono text-xs font-black uppercase tracking-wider border-2 transition-all ${
                     isActive
-                      ? 'bg-stone-950 text-white dark:bg-[#315c49]/12 dark:text-[#a8c0b0] dark:border dark:border-[#315c49]/35 shadow-sm'
-                      : 'text-stone-600 dark:text-[#a99d92] hover:text-stone-950 dark:hover:text-stone-200 hover:bg-stone-200/60 dark:hover:bg-[#332e2a]/80'
+                      ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_#FF5500]'
+                      : 'bg-white/60 dark:bg-stone-900 border-black/30 dark:border-stone-700 text-stone-800 dark:text-stone-300 hover:border-black hover:bg-white hover:text-black dark:hover:bg-stone-800 dark:hover:text-white'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-orange-300 dark:text-[#789b86]' : 'text-stone-500 dark:text-[#a99d92]'}`} />
+                  <Icon className="w-3.5 h-3.5" />
                   {link.name}
                 </Link>
               )
@@ -86,83 +104,108 @@ export const Header = () => {
           </nav>
         </div>
 
-        {/* Right side status, theme toggle & User menu */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          {/* Status Badge */}
-          <div className="hidden lg:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-stone-200/70 dark:bg-[#315c49]/18 border border-stone-300 dark:border-[#456f5b]/45 text-stone-700 dark:text-[#789b86] text-[11px] font-mono">
-            <span className="w-2 h-2 rounded-full bg-orange-600 dark:bg-[#789b86] animate-pulse" />
-            <span>{isDark ? 'QDRANT VECTOR CLUSTER ACTIVE' : 'QDRANT CLUSTER ONLINE'}</span>
+        {/* Right Controls & User Profile */}
+        <div className="flex items-center gap-3">
+          {/* Cluster Status Badge */}
+          <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-stone-900 border-2 border-black text-black dark:text-white font-mono text-[10px] font-black uppercase tracking-wider shadow-[2px_2px_0px_0px_#000]">
+            <span className="w-2 h-2 rounded-full bg-[#00D084] animate-ping" />
+            <span>QDRANT HNSW // ONLINE</span>
           </div>
 
-          {/* Theme Toggle Button (Light ↔ Dark) */}
+          {/* Theme Mode Toggle */}
           <button
             type="button"
             onClick={handleToggleTheme}
-            className="p-2.5 rounded-full bg-white dark:bg-[#25211e] border border-stone-300 dark:border-[#403933] text-stone-700 dark:text-[#ded3c8] hover:border-orange-700 dark:hover:border-[#789b86] transition-all cursor-pointer shadow-xs flex items-center justify-center"
+            className="p-2 bg-white dark:bg-stone-900 border-2 border-black text-black dark:text-white hover:bg-[#FF5500] hover:text-black dark:hover:bg-[#FF5500] dark:hover:text-black shadow-[2px_2px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
             title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
             aria-label="Toggle Theme Mode"
           >
             {isDark ? (
-              <Sun className="w-4 h-4 text-amber-400 hover:rotate-45 transition-transform" />
+              <Sun className="w-4 h-4 text-amber-300" />
             ) : (
-              <Moon className="w-4 h-4 text-orange-700 hover:-rotate-12 transition-transform" />
+              <Moon className="w-4 h-4 text-black" />
             )}
           </button>
 
+          {/* User Profile / Auth State */}
           {isAuthenticated ? (
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                className="flex items-center gap-3 p-1.5 pl-2.5 rounded-full border border-stone-300 dark:border-[#403933] hover:border-stone-400 dark:hover:border-stone-700 bg-white dark:bg-[#25211e] transition-all cursor-pointer shadow-xs"
+                className="flex items-center gap-2.5 px-3 py-1.5 bg-white dark:bg-stone-900 border-2 border-black shadow-[3px_3px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer"
               >
-                <div className="flex flex-col text-right">
-                  <span className="text-xs font-bold text-stone-950 dark:text-[#ded3c8] leading-none">
-                    {user.name}
-                  </span>
-                  <span className="text-[9px] font-mono tracking-wider text-orange-700 dark:text-[#789b86] uppercase mt-0.5">
-                    {user.role}
-                  </span>
-                </div>
                 <img
                   src={user.avatar}
                   alt={user.name}
-                  className="w-8 h-8 rounded-full object-cover border border-stone-200 dark:border-[#315c49]/45"
+                  className="w-6 h-6 rounded-full border border-black object-cover"
                 />
+                <div className="hidden sm:flex flex-col text-left">
+                  <span className="font-mono text-xs font-black text-black dark:text-white leading-none">
+                    {user.name}
+                  </span>
+                  <span
+                    className={`text-[9px] font-mono font-black uppercase mt-0.5 ${
+                      user.role === 'admin' ? 'text-[#FF5500]' : 'text-[#00D084]'
+                    }`}
+                  >
+                    [{user.role}]
+                  </span>
+                </div>
               </button>
 
-              {/* User Dropdown */}
               {userDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-60 bg-white dark:bg-[#25211e] rounded-2xl border border-stone-200 dark:border-[#403933] shadow-xl py-2 z-50 animate-fadeIn">
-                  <div className="px-4 py-3 border-b border-stone-100 dark:border-[#403933]">
-                    <p className="text-xs font-bold text-stone-950 dark:text-[#ded3c8]">{user.name}</p>
-                    <p className="text-[11px] text-stone-500 dark:text-[#a99d92] truncate">{user.email}</p>
-                    <span className="inline-flex items-center gap-1 mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-stone-100 dark:bg-[#315c49]/12 text-orange-700 dark:text-[#a8c0b0] border border-stone-200 dark:border-[#315c49]/35">
-                      {user.role === 'admin' ? <Shield className="w-3 h-3 text-orange-700 dark:text-[#789b86]" /> : <User className="w-3 h-3 text-stone-600 dark:text-[#a99d92]" />}
-                      Role: {user.role}
-                    </span>
+                <div className="absolute right-0 mt-2 w-64 bg-[#F7F4EE] dark:bg-[#1C1A17] border-3 border-black shadow-[6px_6px_0px_0px_#000] py-2 z-50 animate-fadeIn font-mono">
+                  <div className="px-4 py-3 border-b-2 border-black">
+                    <p className="text-xs font-black text-black dark:text-white uppercase">{user.name}</p>
+                    <p className="text-[11px] text-stone-600 dark:text-stone-400 truncate">{user.email}</p>
+                    <div className="inline-flex items-center gap-1.5 mt-2 px-2 py-0.5 bg-white dark:bg-stone-900 border border-black text-[10px] font-black uppercase">
+                      <RoleIcon className="w-3 h-3 text-[#FF5500]" />
+                      <span>ROLE: {user.role}</span>
+                    </div>
                   </div>
 
-                  <div className="py-1">
-                    {navLinks.map((link) => (
+                  <div className="py-2 space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserDropdownOpen(false)
+                        setProfileModalOpen(true)
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-black text-black dark:text-stone-200 hover:bg-[#FF5500] hover:text-black transition-colors cursor-pointer text-left uppercase"
+                    >
+                      <User className="w-4 h-4 text-[#FF5500]" />
+                      MY PROFILE & SETTINGS
+                    </button>
+
+                    {displayLinks.map((link) => (
                       <Link
-                        key={link.path}
+                        key={`${link.name}-dd`}
                         to={link.path}
                         onClick={() => setUserDropdownOpen(false)}
-                        className="flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-stone-700 dark:text-[#c8bbb0] hover:bg-stone-100 dark:hover:bg-[#38322d] transition-colors tracking-wider"
+                        className="flex items-center gap-2.5 px-4 py-2 text-xs font-bold text-black dark:text-stone-200 hover:bg-black hover:text-white transition-colors"
                       >
-                        <link.icon className="w-4 h-4 text-orange-700 dark:text-[#789b86]" />
+                        <link.icon className="w-4 h-4 text-[#FF5500]" />
                         {link.name}
                       </Link>
                     ))}
+                    <Link
+                      to="/"
+                      onClick={() => setUserDropdownOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2 text-xs font-bold text-black dark:text-stone-200 hover:bg-black hover:text-white transition-colors"
+                    >
+                      <Terminal className="w-4 h-4 text-[#00D084]" />
+                      LANDING PAGE
+                    </Link>
                   </div>
 
-                  <div className="border-t border-stone-100 dark:border-[#403933] pt-1">
+                  <div className="border-t-2 border-black pt-1 px-2">
                     <button
+                      type="button"
                       onClick={handleLogout}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-xs text-rose-700 dark:text-[#c98d89] hover:bg-rose-50 dark:hover:bg-[#3b2424]/60 transition-colors text-left font-semibold"
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-100 dark:bg-red-950/40 border border-red-600 text-red-900 dark:text-red-300 hover:bg-red-600 hover:text-white text-xs font-black uppercase transition-all cursor-pointer"
                     >
-                      <LogOut className="w-4 h-4" />
+                      <LogOut className="w-3.5 h-3.5" />
                       SIGN OUT
                     </button>
                   </div>
@@ -171,40 +214,59 @@ export const Header = () => {
             </div>
           ) : (
             <Link
-              to="/auth"
-              className="px-5 py-2.5 rounded-full bg-stone-950 text-white dark:bg-[#315c49] dark:text-[#f3ece4] text-xs font-bold tracking-wider hover:bg-orange-700 dark:hover:bg-[#789b86] transition-all shadow-md"
+              to="/auth?mode=login"
+              className="px-5 py-2 bg-black text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[3px_3px_0px_0px_#FF5500] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all"
             >
               SIGN IN
             </Link>
           )}
 
-          {/* Mobile hamburger button */}
+          {/* Mobile Menu Button */}
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-stone-700 dark:text-[#c8bbb0] rounded-full bg-white dark:bg-[#25211e] border border-stone-300 dark:border-[#403933]"
+            className="md:hidden p-2 bg-white dark:bg-stone-900 border-2 border-black text-black dark:text-white"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </div>
 
-      {/* Mobile Menu Dropdown */}
+      {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-stone-200 dark:border-[#403933] bg-[#F5F0E8] dark:bg-[#181512] px-4 py-4 space-y-2">
-          {navLinks.map((link) => (
+        <div className="md:hidden border-t-2 border-black bg-[#F7F4EE] dark:bg-[#141210] p-4 space-y-2 font-mono">
+          {isAuthenticated && (
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false)
+                setProfileModalOpen(true)
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-white dark:bg-stone-900 border-2 border-black text-xs font-black uppercase shadow-[2px_2px_0px_0px_#000] text-left"
+            >
+              <User className="w-4 h-4 text-[#FF5500]" />
+              MY PROFILE & SETTINGS
+            </button>
+          )}
+          {displayLinks.map((link) => (
             <Link
-              key={link.path}
+              key={`${link.name}-m`}
               to={link.path}
               onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-3 px-4 py-3 rounded-full text-xs font-bold tracking-widest text-stone-950 dark:text-[#f3ece4] bg-white dark:bg-[#25211e] border border-stone-200 dark:border-[#403933]"
+              className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-stone-900 border-2 border-black text-xs font-black uppercase shadow-[2px_2px_0px_0px_#000]"
             >
-              <link.icon className="w-4 h-4 text-orange-700 dark:text-[#789b86]" />
+              <link.icon className="w-4 h-4 text-[#FF5500]" />
               {link.name}
             </Link>
           ))}
         </div>
       )}
+
+      {/* User Profile Modal */}
+      <ProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+      />
     </header>
   )
 }
