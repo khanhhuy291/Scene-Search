@@ -130,15 +130,15 @@ class SigLIPEncoder:
 
     @property
     def device(self) -> str:
+        if self.settings.qwen_embedding_url and self._model is None:
+            return "remote"
         self.load()
         assert self._device is not None
         return self._device
 
     @property
     def dimension(self) -> int:
-        if self._dimension is None:
-            self._dimension = len(self.encode_texts([""])[0])
-        return self._dimension
+        return 768
 
     # -- encoding ----------------------------------------------------------
 
@@ -146,11 +146,104 @@ class SigLIPEncoder:
         features = features / features.norm(dim=-1, keepdim=True)
         return [[float(value) for value in row] for row in features.float().cpu()]
 
+    def _encode_remote(
+        self,
+        *,
+        images: Sequence[Image] | None = None,
+        texts: Sequence[str] | None = None,
+        mode: str = "image",
+    ) -> list[Vector]:
+        import base64
+        import io
+
+        import httpx
+
+        url = self.settings.qwen_embedding_url
+        if not url:
+            raise EncoderError("qwen_embedding_url is not configured")
+
+        headers: dict[str, str] = {}
+        if self.settings.qwen_embedding_api_key:
+            headers["Authorization"] = (
+                f"Bearer {self.settings.qwen_embedding_api_key.get_secret_value()}"
+            )
+
+        raw_bs = getattr(self.settings, "batch_size", 16)
+        batch_size = max(1, min(raw_bs if isinstance(raw_bs, int) else 16, 32))
+        vectors: list[Vector] = []
+
+        try:
+            with httpx.Client(timeout=self.settings.qwen_embedding_timeout) as client:
+
+                def _post_with_retry(payload: dict[str, Any]) -> dict[str, Any]:
+                    import time
+
+                    retries = 4
+                    delay = 1.0
+                    for attempt in range(retries):
+                        try:
+                            resp = client.post(
+                                f"{url.rstrip('/')}/embeddings", json=payload, headers=headers
+                            )
+                            if resp.status_code == 503 and attempt < retries - 1:
+                                time.sleep(delay)
+                                delay = min(delay * 1.5, 4.0)
+                                continue
+                            resp.raise_for_status()
+                            return resp.json()
+                        except httpx.ConnectError:
+                            if attempt < retries - 1:
+                                time.sleep(delay)
+                                delay = min(delay * 1.5, 4.0)
+                                continue
+                            raise
+                    resp = client.post(
+                        f"{url.rstrip('/')}/embeddings", json=payload, headers=headers
+                    )
+                    resp.raise_for_status()
+                    return resp.json()
+
+                if texts:
+                    for start in range(0, len(texts), batch_size):
+                        chunk = texts[start : start + batch_size]
+                        payload = {
+                            "model": "siglip",
+                            "mode": "text",
+                            "texts": list(chunk),
+                        }
+                        data = _post_with_retry(payload)
+                        vectors.extend(data.get("embeddings", []))
+                elif images:
+                    for start in range(0, len(images), batch_size):
+                        chunk = images[start : start + batch_size]
+                        encoded_images: list[str] = []
+                        for img in chunk:
+                            buf = io.BytesIO()
+                            img.save(buf, format="JPEG", quality=90)
+                            encoded_images.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
+                        payload = {
+                            "model": "siglip",
+                            "mode": "image",
+                            "images": encoded_images,
+                        }
+                        data = _post_with_retry(payload)
+                        vectors.extend(data.get("embeddings", []))
+            return vectors
+        except httpx.HTTPStatusError as exc:
+            raise EncoderError(
+                f"Remote SigLIP embedding HTTP {exc.response.status_code}: {exc.response.text}"
+            ) from exc
+        except Exception as exc:
+            raise EncoderError(f"Remote SigLIP embedding request failed: {exc}") from exc
+
     def encode_images(self, images: Sequence[Image]) -> list[Vector]:
         """Embed images in configured batches, returning normalized vectors."""
 
         if not images:
             return []
+        if self.settings.qwen_embedding_url and self._model is None:
+            return self._encode_remote(images=images, mode="image")
+
         self.load()
         import torch
 
@@ -170,6 +263,9 @@ class SigLIPEncoder:
 
         if not texts:
             return []
+        if self.settings.qwen_embedding_url and self._model is None:
+            return self._encode_remote(texts=texts, mode="text")
+
         self.load()
         import torch
 

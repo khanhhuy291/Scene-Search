@@ -1,10 +1,11 @@
-"""Multimodal Conversational QA Agent with Iterative Paraphrasing and Visual Reflection."""
+"""Multimodal Conversational Video QA Agent with Multilingual Query Formulation and Visual Inspection."""
 
 from __future__ import annotations
 
 import base64
 import io
 import json
+import os
 import re
 from typing import Any
 
@@ -17,49 +18,45 @@ from ml.image_cache import get_image_cache
 from schemas.chat import ChatRequest, ChatResponse, SceneSource
 from search.engine import get_search_engine
 
-FORMULATION_SYSTEM_PROMPT = """You are the search query planner for SceneSearch, an autonomous driving video retrieval system.
+FORMULATION_SYSTEM_PROMPT = """You are an expert video retrieval query planner for the SceneSearch traffic and dashcam system.
 
-Analyze the user's conversation and extract the core visual scene query for dense vector retrieval.
-Important rules:
-1. Translate Vietnamese intent into natural English visual descriptors.
-2. Handle colloquialisms and common Vietnamese typos:
-   - "bãi đổ xe" or "bãi đỗ xe" -> "parking lot", "parking area", "parked cars" (never translate to scrapyard/junkyard/dump!).
-   - "mở cửa xe" -> "person opening car door" or "person standing by vehicle door".
-   - "vượt đèn đỏ" -> "car passing red light at intersection".
-3. Strip conversational QA sub-questions (e.g. "Lúc đó người đó là nam hay nữ?", "xe màu gì?") from the vector search query, keeping only the core visual scene elements (e.g. "person opening car door in parking lot").
+Your task:
+1. Analyze the user's question or search intent (which is in Vietnamese or English).
+2. Translate and distill the core visual concept into a concise, descriptive ENGLISH visual search query optimized for Qwen / SigLIP dense vector embeddings.
+   - Example 1: "có video người đi bộ dắt chó nào không? họ là nam hay nữ và lúc đó họ mặc áo màu gì?" -> "person walking a dog on street or sidewalk"
+   - Example 2: "tìm xe buýt màu vàng rẽ trái lúc trời mưa" -> "yellow bus turning left on wet rainy street"
+   - Example 3: "bãi đỗ xe ô tô ban đêm" -> "outdoor parking lot with parked cars at night"
+   - Example 4: "tai nạn va chạm xe máy ngã tư" -> "motorcycle traffic collision at intersection"
+3. Strip away conversational follow-up questions (e.g. "họ là nam hay nữ", "mặc áo màu gì", "lúc đó là mấy giờ") from the vector search query, keeping ONLY the physical scene elements to be retrieved from the video database.
 
-Output ONLY a raw JSON object (no markdown, no thinking tags, no extra text):
+Output ONLY a raw JSON object (no markdown, no extra text):
 {
-  "needs_search": boolean,
-  "search_query": "clean, concise English visual search phrase for dense vector retrieval",
-  "reason": "short explanation under 10 words"
+  "needs_search": true,
+  "search_query": "concise English visual query",
+  "reason": "short explanation under 15 words"
 }
 """
 
-PARAPHRASE_SYSTEM_PROMPT = """You are an expert traffic, dashcam, and street video search query refiner.
-A previous vector query returned insufficient or empty results from the video database.
-Analyze why it may have failed and generate a broader, more effective visual search phrase in English.
+PARAPHRASE_SYSTEM_PROMPT = """You are an expert video retrieval query optimizer.
+The previous search query returned zero or insufficient matches from the video database.
+Analyze why it may have been too narrow and generate a broader, more effective visual search phrase in English while preserving driving/traffic/street context.
 
-Important:
-- Always preserve traffic, road, street, or camera context (e.g. for "cat", generate "cat on road or street" or "small animal on roadside", NEVER isolated non-visual queries like "cat color").
-- Broaden terms (e.g. "yellow bus" -> "transit bus or large public vehicle", "cat" -> "cat or small animal crossing street").
-
-Output ONLY a JSON object:
+Output ONLY a raw JSON object:
 {
-  "search_query": "paraphrased broader visual search phrase",
-  "reason": "why this query is more effective for visual matching"
+  "search_query": "broader English visual search query",
+  "reason": "short explanation of the refinement"
 }
 """
 
-QA_SYSTEM_PROMPT = """You are SceneSearch Multimodal AI Assistant, an expert autonomous driving and traffic video analyst.
-You possess native Vision-Language capabilities and can directly inspect forward dashcam and traffic camera keyframe images.
+QA_SYSTEM_PROMPT = """Bạn là Trợ lý AI Đa phương thức SceneSearch - Chuyên gia phân tích video giao thông và camera hành trình.
+Bạn sử dụng mô hình thị giác (Vision-Language) để TRỰC TIẾP QUAN SÁT các khung hình ảnh trích xuất từ video.
 
-Guidelines:
-1. Carefully observe the visual details in each provided keyframe image (vehicle types, colors, actions, pedestrians, lane markings, weather, lighting, traffic density).
-2. Answer the user's specific question directly, accurately, and politely.
-3. Explicitly cite the scenes using [Scene 1], [Scene 2], etc., matching the Video ID and timestamp.
-4. If a detail requested by the user is not visible in the images, state so honestly.
-5. Always respond in the same language as the user's inquiry (e.g. Vietnamese or English).
+YÊU CẦU QUAN TRỌNG VỀ PHONG CÁCH TRẢ LỜI:
+1. LUÔN TRẢ LỜI BẰNG TIẾNG VIỆT tự nhiên, súc tích, ngắn gọn (chỉ từ 2 - 4 câu), đi thẳng trực tiếp vào câu trả lời chính của người dùng.
+2. TUYỆT ĐỐI KHÔNG LIỆT KÊ HAY MÔ TẢ DÀI DÒNG LẦN LƯỢT TỪNG ẢNH [Scene 1], [Scene 2]... [Scene 10]. (Vì giao diện web đã tự động hiển thị các thẻ video/ảnh trích xuất ở ngay bên dưới câu trả lời của bạn để người dùng xem).
+3. HÃY TỔNG HỢP KẾT LUẬN VÀ TRÍCH DẪN NGẮN:
+   - Trả lời rõ câu hỏi (có thấy đối tượng không, đối tượng đang làm gì, màu sắc/đặc điểm gì, ở cảnh nào).
+   - Chỉ dẫn chứng ngắn gọn phân cảnh liên quan nhất, ví dụ: "Phát hiện thấy xe màu vàng đang dừng chờ đèn đỏ ở [Scene 1] (lúc 00:15)."
 """
 
 
@@ -74,58 +71,103 @@ class SceneSearchQAAgent:
         messages: list[dict[str, Any]],
         *,
         temperature: float = 0.2,
-        max_tokens: int = 800,
+        max_tokens: int = 1200,
         response_format: dict[str, str] | None = None,
+        fallback_models: list[str] | None = None,
     ) -> tuple[str, str | None]:
-        """Send a request to NVIDIA NIM VLM with generous timeout and return (content, reasoning_content)."""
-        llm = self._settings.llm
-        if not llm.api_key:
-            raise RuntimeError("LLM_API_KEY is not configured in environment.")
+        settings = get_settings()
+        llm = settings.llm
+        api_key = ""
+        if llm.api_key:
+            api_key = llm.api_key.get_secret_value().strip()
+        if not api_key:
+            api_key = (
+                os.getenv("LLM_API_KEY")
+                or os.getenv("OPENAI_API_KEY")
+                or os.getenv("NVIDIA_API_KEY")
+                or ""
+            ).strip()
 
-        api_key = llm.api_key.get_secret_value()
-        url = f"{llm.base_url.rstrip('/')}/chat/completions"
+        if not api_key:
+            raise RuntimeError(
+                "LLM_API_KEY is not configured in environment. Please set LLM_API_KEY in app/.env"
+            )
 
-        payload: dict[str, Any] = {
-            "model": llm.model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-        if response_format:
-            payload["response_format"] = response_format
+        base_url = (
+            os.getenv("LLM_BASE_URL") or llm.base_url or "https://integrate.api.nvidia.com/v1"
+        ).rstrip("/")
+        model = os.getenv("LLM_MODEL") or llm.model or "meta/llama-3.2-11b-vision-instruct"
+        url = f"{base_url}/chat/completions"
 
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 
-        # Generous 90s timeout with connection timeout to prevent ReadTimeout
-        client_timeout = httpx.Timeout(90.0, connect=15.0, read=90.0, write=30.0)
+        client_timeout = httpx.Timeout(45.0, connect=10.0, read=45.0, write=20.0)
+
+        models_to_try = [model]
+        if fallback_models:
+            models_to_try.extend([m for m in fallback_models if m != model])
+        else:
+            for default_alt in [
+                "meta/llama-3.2-11b-vision-instruct",
+                "meta/llama-3.2-90b-vision-instruct",
+            ]:
+                if default_alt != model:
+                    models_to_try.append(default_alt)
+
+        last_exc: Exception | None = None
 
         async with httpx.AsyncClient(timeout=client_timeout) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            if response.status_code != 200:
-                logger.error(
-                    "NVIDIA NIM VLM error {status}: {text}",
-                    status=response.status_code,
-                    text=response.text[:300],
-                )
-                raise RuntimeError(
-                    f"VLM API returned error status {response.status_code}: {response.text[:200]}"
-                )
+            for model_name in models_to_try:
+                payload: dict[str, Any] = {
+                    "model": model_name,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                }
+                if response_format:
+                    payload["response_format"] = response_format
 
-            data = response.json()
-            choices = data.get("choices", [])
-            if not choices:
-                return "", None
+                try:
+                    response = await client.post(url, headers=headers, json=payload)
+                    if response.status_code != 200:
+                        logger.warning(
+                            "Model {} returned error status {}: {}; attempting fallback...",
+                            model_name,
+                            response.status_code,
+                            response.text[:200],
+                        )
+                        last_exc = RuntimeError(f"Model {model_name} status {response.status_code}")
+                        continue
 
-            message = choices[0].get("message", {})
-            content = message.get("content", "") or ""
-            reasoning = message.get("reasoning_content") or choices[0].get("reasoning_content")
-            return content.strip(), reasoning
+                    data = response.json()
+                    choices = data.get("choices", [])
+                    if not choices:
+                        continue
 
-    def _image_to_data_url(self, img: Image.Image, max_edge: int = 384, quality: int = 80) -> str:
-        """Resize PIL Image and convert to compact base64 JPEG data URL (~25-35KB)."""
+                    message = choices[0].get("message", {})
+                    content = message.get("content", "") or ""
+                    reasoning = message.get("reasoning_content") or choices[0].get(
+                        "reasoning_content"
+                    )
+                    return content.strip(), reasoning
+                except (httpx.TimeoutException, httpx.RequestError) as exc:
+                    logger.warning(
+                        "Model {} connection/timeout error: {}; attempting fallback...",
+                        model_name,
+                        exc,
+                    )
+                    last_exc = exc
+                    continue
+
+        if last_exc:
+            raise last_exc
+        return "", None
+
+    def _image_to_data_url(self, img: Image.Image, max_edge: int = 640, quality: int = 85) -> str:
+        """Resize PIL Image and convert to high-clarity base64 JPEG data URL (~50-80KB)."""
         w, h = img.size
         if max(w, h) > max_edge:
             scale = max_edge / max(w, h)
@@ -137,12 +179,16 @@ class SceneSearchQAAgent:
         return f"data:image/jpeg;base64,{b64}"
 
     async def _paraphrase_query(self, failed_query: str, user_original: str) -> str:
-        """Ask LLM to reflect and generate an alternative visual search query."""
+        """Reflect and generate an alternative visual search query."""
         messages = [
             {"role": "system", "content": PARAPHRASE_SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": f'Original user request: "{user_original}"\nPrevious search query that returned low/zero matches: "{failed_query}"\nPlease generate an improved, broader, or synonymous visual search phrase.',
+                "content": (
+                    f'Original user question: "{user_original}"\n'
+                    f'Previous vector query that returned low/zero results: "{failed_query}"\n'
+                    f"Please generate an improved, broader English visual search phrase."
+                ),
             },
         ]
         try:
@@ -162,12 +208,12 @@ class SceneSearchQAAgent:
         return failed_query
 
     async def chat(self, request: ChatRequest) -> ChatResponse:
-        """Process chat message end-to-end with iterative query refinement and visual inspection."""
+        """Process chat message end-to-end with query translation, iterative retrieval, and multi-image inspection."""
         engine = get_search_engine()
         image_cache = get_image_cache()
 
         # -------------------------------------------------------------
-        # STEP 1: Initial Query Formulation & Intent Analysis
+        # STEP 1: Query Formulation & Intent Translation (Tiếng Việt -> English Visual Query)
         # -------------------------------------------------------------
         formulation_messages: list[dict[str, Any]] = [
             {"role": "system", "content": FORMULATION_SYSTEM_PROMPT},
@@ -197,7 +243,7 @@ class SceneSearchQAAgent:
         needs_search = plan.get("needs_search", True)
         current_query = plan.get("search_query", request.message)
 
-        # If general conversational greeting without search intent
+        # Non-search conversational greetings / inquiries
         if not needs_search:
             general_messages = [
                 {"role": "system", "content": QA_SYSTEM_PROMPT},
@@ -216,7 +262,7 @@ class SceneSearchQAAgent:
 
         for iteration in range(max_iterations):
             logger.info(
-                "Chat Agent iteration {}/{} executing search for query: {!r}",
+                "Chat Agent iteration {}/{} executing vector search for query: {!r}",
                 iteration + 1,
                 max_iterations,
                 current_query,
@@ -229,13 +275,11 @@ class SceneSearchQAAgent:
                 rerank=False,
             )
 
-            # If we found matches or this is the first result
             if outcome.matches and len(outcome.matches) > 0:
                 best_outcome = outcome
                 break
             else:
                 best_outcome = outcome
-                # If matches are empty and we still have iterations, reflect & paraphrase
                 if iteration < max_iterations - 1:
                     refined = await self._paraphrase_query(current_query, request.message)
                     if refined and refined.strip() != current_query:
@@ -249,10 +293,14 @@ class SceneSearchQAAgent:
                 *[{"role": m.role, "content": m.content} for m in request.history[-4:]],
                 {
                     "role": "user",
-                    "content": f"User question: {request.message}\n(System note: Vector search for queries {queries_tried} returned 0 matches in the database. Please kindly inform the user and suggest alternative search terms).",
+                    "content": (
+                        f"Câu hỏi của người dùng: {request.message}\n"
+                        f"(Thông báo hệ thống: Tìm kiếm vector với các từ khóa {queries_tried} không tìm thấy kết quả phù hợp trong cơ sở dữ liệu video. "
+                        f"Hãy trả lời bằng tiếng Việt lịch sự, thông báo không tìm thấy đoạn video phù hợp và gợi ý các từ khóa khác)."
+                    ),
                 },
             ]
-            content, reasoning = await self._call_vlm(no_results_messages, max_tokens=400)
+            content, reasoning = await self._call_vlm(no_results_messages, max_tokens=500)
             return ChatResponse(
                 reply=content,
                 reasoning=reasoning,
@@ -263,10 +311,11 @@ class SceneSearchQAAgent:
             )
 
         # -------------------------------------------------------------
-        # STEP 3: Visual Ingestion (Fetch Thumbnails from S3/Redis)
+        # STEP 3: Visual Keyframe Acquisition from Storage / Cache
         # -------------------------------------------------------------
+        candidate_matches = final_outcome.matches[: request.limit]
         items_to_fetch = []
-        for match in final_outcome.matches:
+        for match in candidate_matches:
             kf = match.keyframe
             frame_name = (
                 kf.thumbnail_key.rsplit("/", 1)[-1]
@@ -278,17 +327,21 @@ class SceneSearchQAAgent:
         images = await image_cache.get_images_batch(items_to_fetch)
 
         # -------------------------------------------------------------
-        # STEP 4: Multimodal Visual QA & Reasoning with Nemotron Omni VLM
+        # STEP 4: Multimodal Visual Inspection & Synthesis with Kimi-k3
         # -------------------------------------------------------------
         sources: list[SceneSource] = []
         user_content_blocks: list[dict[str, Any]] = [
             {
                 "type": "text",
-                "text": f"User question: {request.message}\n\nI have retrieved {len(final_outcome.matches)} relevant candidate video scenes from the database using query '{current_query}':\n",
+                "text": (
+                    f"Câu hỏi của người dùng: {request.message}\n\n"
+                    f"Hệ thống đã truy xuất được {len(candidate_matches)} đoạn video/scene tiềm năng từ cơ sở dữ liệu (từ khóa truy vấn: '{current_query}').\n"
+                    f"Dưới đây là thông tin và hình ảnh khung hình thực tế của từng scene:\n"
+                ),
             }
         ]
 
-        for idx, (match, img) in enumerate(zip(final_outcome.matches, images), start=1):
+        for idx, (match, img) in enumerate(zip(candidate_matches, images), start=1):
             kf = match.keyframe
             timecode = f"{int(kf.timestamp_s // 60):02d}:{int(kf.timestamp_s % 60):02d}"
             preview_url = f"/api/v1/media/thumbnail/{kf.point_id}" if kf.point_id else None
@@ -309,14 +362,16 @@ class SceneSearchQAAgent:
             )
 
             scene_desc = (
-                f"\n--- [Scene {idx}] ---\n"
+                f"\n=== [Scene {idx}] ===\n"
                 f"• Video ID: {kf.video_id}\n"
-                f"• Timecode: {timecode} ({kf.timestamp_s:.1f}s)\n"
-                f"• Caption: {kf.caption}\n"
-                f"• Keyframe Image below:"
+                f"• Mốc thời gian: {timecode} ({kf.timestamp_s:.1f}s)\n"
+                f"• Độ tương đồng vector: {float(match.score or 0.0):.3f}\n"
+                f"• Chú thích hệ thống: {kf.caption or 'N/A'}\n"
+                f"• Hình ảnh thực tế của [Scene {idx}]:"
             )
             user_content_blocks.append({"type": "text", "text": scene_desc})
 
+            # Attach visual keyframe for Kimi-k3 multimodal vision inspection (all top candidate scenes up to 10)
             if img is not None:
                 data_url = self._image_to_data_url(img)
                 user_content_blocks.append(
@@ -330,8 +385,10 @@ class SceneSearchQAAgent:
             {
                 "type": "text",
                 "text": (
-                    "\nPlease carefully analyze the images and metadata above, and answer the user's question with specific visual evidence, "
-                    "citing each scene as [Scene 1], [Scene 2], etc."
+                    "\nHÃY TỔNG HỢP BẰNG CHỨNG THỊ GIÁC VÀ TRẢ LỜI CÂU HỎI CỦA NGƯỜI DÙNG BẰNG TIẾNG VIỆT:\n"
+                    "1. Trả lời súc tích, ngắn gọn (2-4 câu), tập trung thẳng vào câu trả lời chính của người dùng.\n"
+                    "2. TUYỆT ĐỐI KHÔNG liệt kê mô tả dài dòng từng ảnh [Scene 1]... [Scene 10] (vì web đã có thẻ video bên dưới).\n"
+                    "3. Chỉ dẫn chứng ngắn gọn phân cảnh phù hợp nhất kèm mốc thời gian."
                 ),
             }
         )
@@ -343,7 +400,40 @@ class SceneSearchQAAgent:
             qa_messages.append({"role": msg.role, "content": msg.content})
         qa_messages.append({"role": "user", "content": user_content_blocks})
 
-        reply, reasoning = await self._call_vlm(qa_messages, temperature=0.2, max_tokens=1000)
+        try:
+            reply, reasoning = await self._call_vlm(qa_messages, temperature=0.2, max_tokens=1200)
+        except Exception as exc:
+            logger.warning(
+                "Multimodal VLM vision call failed ({}); falling back to text-only metadata QA", exc
+            )
+            # Fallback to pure text metadata QA without image attachments to prevent 500 errors
+            text_only_blocks = [b for b in user_content_blocks if b.get("type") == "text"]
+            fallback_messages = [
+                {"role": "system", "content": QA_SYSTEM_PROMPT},
+                *[{"role": msg.role, "content": msg.content} for msg in request.history[-4:]],
+                {"role": "user", "content": text_only_blocks},
+            ]
+            try:
+                reply, reasoning = await self._call_vlm(
+                    fallback_messages, temperature=0.2, max_tokens=800
+                )
+            except Exception as final_exc:
+                logger.error("Fallback text QA also failed: {}", final_exc)
+                # Formulate a direct fallback response from candidate scene metadata
+                scene_summaries = []
+                for s_idx, match in enumerate(candidate_matches, start=1):
+                    kf = match.keyframe
+                    timecode = f"{int(kf.timestamp_s // 60):02d}:{int(kf.timestamp_s % 60):02d}"
+                    scene_summaries.append(
+                        f"- [Scene {s_idx}] lúc {timecode}: {kf.caption or 'Khung cảnh video phù hợp'}"
+                    )
+
+                reply = (
+                    f"Hệ thống đã tìm thấy {len(candidate_matches)} đoạn video tiềm năng phù hợp với câu hỏi của bạn:\n\n"
+                    + "\n".join(scene_summaries)
+                    + "\n\nBạn có thể nhấn trực tiếp vào các thẻ video bên dưới để xem chi tiết đoạn video trích xuất."
+                )
+                reasoning = "Phản hồi tự động từ metadata video do máy chủ LLM đang bận."
 
         return ChatResponse(
             reply=reply,

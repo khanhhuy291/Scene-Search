@@ -183,7 +183,7 @@ class OfflineEmbedderPipeline:
         # 1. Upload Video
         if video_path_str and Path(video_path_str).is_file():
             ext = Path(video_path_str).suffix.lower() or ".mov"
-            raw_key = f"videos/{video_id}{ext}"
+            raw_key = f"{video_id}{ext}"
             if video_id not in uploaded_videos:
                 try:
                     video_type = (
@@ -202,7 +202,7 @@ class OfflineEmbedderPipeline:
         # 2. Upload Frame
         if frame_path_str and Path(frame_path_str).is_file():
             frame_idx = record.get("frame_idx", record.get("frame_no", 0))
-            frame_key = f"frames/{video_id}/frame_{frame_idx:05d}.jpg"
+            frame_key = f"{video_id}/frame_{frame_idx:05d}.jpg"
             if frame_key not in uploaded_frames:
                 try:
                     self._minio_client.fput_object(

@@ -75,13 +75,13 @@ export const MyDatasetsPage = () => {
       <div className="border-b-2 border-black pb-6 space-y-1">
         <div className="inline-flex items-center gap-2 px-2.5 py-0.5 bg-white dark:bg-stone-900 border border-black font-mono text-[10px] font-black uppercase text-black dark:text-white shadow-[1.5px_1.5px_0px_0px_#000]">
           <FolderKanban className="w-3 h-3 text-[#FF5500]" />
-          <span>DATASET REPOSITORY // EXPORT HUB</span>
+          <span>KHO LƯU TRỮ DATASET // TRUNG TÂM XUẤT DỮ LIỆU</span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-black text-black dark:text-white uppercase tracking-tight">
-          DOWNLOAD & EXPORT DATASETS
+          TẢI VỀ & XUẤT DATASET
         </h1>
         <p className="text-xs font-mono text-stone-600 dark:text-stone-400">
-          Pick a dataset created in your workspace, then download high-resolution clip bundles directly from the live media store.
+          Chọn một dataset đã tạo trong không gian làm việc của bạn để tải các gói video chất lượng cao và file manifest trực tiếp.
         </p>
       </div>
 
@@ -91,23 +91,23 @@ export const MyDatasetsPage = () => {
           <div className="flex items-center gap-2">
             <Package className="w-4 h-4 text-[#FF5500]" />
             <h2 className="font-mono text-xs font-black uppercase tracking-wider text-black dark:text-white">
-              SELECT DATASET // QUICK EXPORT
+              CHỌN DATASET // XUẤT NHANH
             </h2>
           </div>
           <span className="font-mono text-[10px] font-bold uppercase text-[#FF5500]">
-            NO APPROVAL REQUIRED
+            KHÔNG CẦN PHÊ DUYỆT
           </span>
         </div>
 
         {downloadableDatasets.length === 0 ? (
           <div className="p-6 bg-[#F7F4EE] dark:bg-stone-900 border-2 border-black font-mono text-xs text-stone-600 dark:text-stone-400 text-center space-y-2">
             <p className="font-bold text-black dark:text-white uppercase">
-              [NO SELECTABLE DATASETS AVAILABLE]
+              [CHƯA CÓ DATASET NÀO ĐỂ TẢI]
             </p>
             <p className="font-sans">
-              Perform a search, annotate relevant scenes into your draft, or open your{' '}
+              Thực hiện tìm kiếm, gắn nhãn các phân cảnh vào bản nháp, hoặc mở{' '}
               <Link to="/datasets/draft" className="font-bold underline text-[#FF5500]">
-                Dataset Draft Page
+                Trang Bản Nháp Dataset
               </Link>
               .
             </p>
@@ -119,7 +119,7 @@ export const MyDatasetsPage = () => {
                 htmlFor="dataset-download-select"
                 className="block text-xs font-black uppercase text-black dark:text-white"
               >
-                ACTIVE TARGET DATASET:
+                DATASET ĐANG CHỌN:
               </label>
               <select
                 id="dataset-download-select"
@@ -129,7 +129,7 @@ export const MyDatasetsPage = () => {
               >
                 {downloadableDatasets.map((ds) => (
                   <option key={ds.id} value={ds.id}>
-                    {ds.title} · {ds.items.length} KEYFRAMES ·{' '}
+                    {ds.title} · {ds.items.length} KHUNG HÌNH ·{' '}
                     {new Set(ds.items.map((i) => i.videoId)).size} VIDEOS · [{ds.status.toUpperCase()}]
                   </option>
                 ))}
@@ -138,10 +138,10 @@ export const MyDatasetsPage = () => {
               {selected && (
                 <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] font-mono text-stone-600 dark:text-stone-400">
                   <span className="px-2 py-0.5 bg-black text-white font-bold">
-                    {selected.items.length} KEYFRAMES
+                    {selected.items.length} KHUNG HÌNH
                   </span>
                   <span className="px-2 py-0.5 bg-[#FF5500] text-black font-bold">
-                    {videoCount} UNIQUE VIDEOS
+                    {videoCount} TẬP TIN VIDEO
                   </span>
                 </div>
               )}
@@ -159,12 +159,10 @@ export const MyDatasetsPage = () => {
                   <FileJson className="w-5 h-5 text-[#FF5500]" />
                   <span className="text-[10px] font-black uppercase text-stone-500">.JSONL</span>
                 </div>
-                <p className="text-xs font-black uppercase text-black dark:text-white group-hover:text-white">
-                  KEYFRAME MANIFEST
-                </p>
-                <p className="text-[10px] text-stone-600 dark:text-stone-400 font-sans">
-                  Timestamps, neural labels, frame bounding boxes & video paths.
-                </p>
+                <div className="text-xs font-black uppercase">TẢI MANIFEST</div>
+                <div className="text-[10px] text-stone-500 font-sans">
+                  File chú thích, timestamps và metadata khung hình
+                </div>
               </button>
 
               <button
@@ -177,30 +175,26 @@ export const MyDatasetsPage = () => {
                   <Film className="w-5 h-5 text-[#00D084]" />
                   <span className="text-[10px] font-black uppercase text-stone-500">.ZIP</span>
                 </div>
-                <p className="text-xs font-black uppercase text-black dark:text-white">
-                  RAW CLIPS ONLY
-                </p>
-                <p className="text-[10px] text-stone-600 dark:text-stone-400 font-sans">
-                  Original high-bitrate video clips for each selected keyframe.
-                </p>
+                <div className="text-xs font-black uppercase">TẢI VIDEO CLIPS</div>
+                <div className="text-[10px] text-stone-500 font-sans">
+                  Gói nén ZIP các video và ảnh khung hình trích xuất
+                </div>
               </button>
 
               <button
                 type="button"
                 disabled={busy || !selectedId}
                 onClick={() => runDownload('bundle')}
-                className="p-4 bg-black hover:bg-[#FF5500] text-white hover:text-black border-2 border-black shadow-[4px_4px_0px_0px_#FF5500] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-left space-y-1.5 cursor-pointer disabled:opacity-40 font-mono"
+                className="p-4 bg-[#00D084] hover:bg-black text-black hover:text-white border-2 border-black shadow-[4px_4px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-left space-y-1.5 cursor-pointer disabled:opacity-40 font-mono"
               >
                 <div className="flex items-center justify-between">
-                  <Download className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase">FULL TAR/ZIP</span>
+                  <Package className="w-5 h-5 text-black hover:text-white" />
+                  <span className="text-[10px] font-black uppercase text-black/70">TRỌN GÓI</span>
                 </div>
-                <p className="text-xs font-black uppercase">
-                  COMPLETE BUNDLE
-                </p>
-                <p className="text-[10px] opacity-80 font-sans">
-                  Complete ML training package with metadata & raw assets.
-                </p>
+                <div className="text-xs font-black uppercase">TẢI TRỌN BỘ BUNDLE</div>
+                <div className="text-[10px] font-sans opacity-80">
+                  Manifest JSONL + Toàn bộ Video và Ảnh Keyframes
+                </div>
               </button>
             </div>
           </div>

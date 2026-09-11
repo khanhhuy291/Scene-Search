@@ -23,6 +23,7 @@ from db.models.review import (
     UserRole,
     Verdict,
 )
+from db.models.rlhf import RLHFFeedback
 
 __all__ = [
     "Base",
@@ -32,6 +33,7 @@ __all__ = [
     "FrameAttribute",
     "FrameObject",
     "IngestionTask",
+    "RLHFFeedback",
     "ReviewDecision",
     "ReviewSession",
     "Segment",

@@ -101,9 +101,15 @@ def test_jwt_token_invalid_signature() -> None:
         decode_token(tampered_token)
 
 
-def test_production_rejects_the_default_jwt_secret() -> None:
+def test_production_rejects_the_default_jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AUTH_SECRET_KEY", raising=False)
+    from core.config import _INSECURE_DEFAULT_AUTH_SECRET
+
     with pytest.raises(ValueError, match="AUTH_SECRET_KEY must be explicitly configured"):
-        Settings(app=AppSettings(env="production"))
+        Settings(
+            app=AppSettings(env="production"),
+            auth=AuthSettings(secret_key=_INSECURE_DEFAULT_AUTH_SECRET),
+        )
 
 
 def test_production_accepts_an_explicit_jwt_secret() -> None:

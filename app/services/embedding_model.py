@@ -18,9 +18,7 @@ def _connection() -> tuple[str, dict[str, str], float]:
         )
     headers: dict[str, str] = {}
     if settings.qwen_embedding_api_key:
-        headers["Authorization"] = (
-            f"Bearer {settings.qwen_embedding_api_key.get_secret_value()}"
-        )
+        headers["Authorization"] = f"Bearer {settings.qwen_embedding_api_key.get_secret_value()}"
     return settings.qwen_embedding_url.rstrip("/"), headers, settings.qwen_embedding_timeout
 
 
@@ -33,9 +31,7 @@ async def embedding_model_request(
     method = "GET" if action == "status" else "POST"
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.request(
-                method, f"{base_url}/model/{action}", headers=headers
-            )
+            response = await client.request(method, f"{base_url}/model/{action}", headers=headers)
         response.raise_for_status()
         return EmbeddingModelStatus.model_validate(response.json())
     except httpx.HTTPStatusError as exc:

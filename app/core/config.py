@@ -84,11 +84,21 @@ class CelerySettings(_BaseSettings):
     """Celery broker, result backend, and worker safety limits."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="CELERY_"
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        env_prefix="CELERY_",
+        populate_by_name=True,
     )
 
-    broker_url: str = "redis://localhost:6379/1"
-    result_backend: str = "redis://localhost:6379/2"
+    broker_url: str = Field(
+        default="redis://localhost:6379/1",
+        validation_alias=AliasChoices("CELERY_BROKER_URL", "REDIS_URL"),
+    )
+    result_backend: str = Field(
+        default="redis://localhost:6379/2",
+        validation_alias=AliasChoices("CELERY_RESULT_BACKEND", "REDIS_URL"),
+    )
     worker_concurrency: int = Field(default=2, ge=1, le=32)
     worker_prefetch_multiplier: int = Field(default=1, ge=1, le=16)
     task_soft_time_limit: int = Field(default=3300, gt=0)
@@ -144,11 +154,12 @@ class MinIOSettings(_BaseSettings):
         value = value.strip().rstrip("/")
         if not value:
             return None
-        if value.startswith(("http://", "https://")):
-            raise ValueError(
-                "MINIO_SCENE_MEDIA_ENDPOINT must be host:port without an http(s) scheme"
-            )
-        return value
+        if value.startswith("https://"):
+            value = value[len("https://") :]
+        elif value.startswith("http://"):
+            value = value[len("http://") :]
+        value = value.strip().rstrip("/")
+        return value or None
 
     @model_validator(mode="after")
     def buckets_must_be_distinct(self) -> MinIOSettings:
@@ -163,8 +174,11 @@ class MinIOSettings(_BaseSettings):
     @classmethod
     def endpoint_must_not_include_scheme(cls, value: str) -> str:
         value = value.strip().rstrip("/")
-        if value.startswith(("http://", "https://")):
-            raise ValueError("MINIO_ENDPOINT must be host:port without an http(s) scheme")
+        if value.startswith("https://"):
+            value = value[len("https://") :]
+        elif value.startswith("http://"):
+            value = value[len("http://") :]
+        value = value.strip().rstrip("/")
         if not value:
             raise ValueError("MINIO_ENDPOINT cannot be empty")
         return value
@@ -190,8 +204,7 @@ class QdrantSettings(_BaseSettings):
     # dimension change is a re-index rather than a schema migration.
     vector_size: int = Field(default=768, ge=64, le=4096)
     hnsw_ef_search: int = Field(default=128, ge=16, le=1024)
-    # Named-vector collections are read-only unless deployment explicitly opts
-    # into writing one known vector space.
+    # Named-vector collections are read-only unless deployment explicitly opts in
     write_vector_name: str = ""
     allow_named_vector_writes: bool = False
 
@@ -200,7 +213,11 @@ class MLSettings(_BaseSettings):
     """Embedding-model and inference-device settings (ADR-0001)."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="ML_"
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        env_prefix="ML_",
+        populate_by_name=True,
     )
 
     # Primary multimodal embedding model (Qwen 2048d, or SigLIP 768d).
@@ -229,7 +246,7 @@ class MLSettings(_BaseSettings):
     device: Literal["auto", "mps", "cuda", "cpu"] = "auto"
     # fp32 by default: MPS half precision has known numerical gaps in some
     # transformer operators, and the corpus is small enough not to need fp16.
-    dtype: Literal["float32", "float16"] = "float32"
+    dtype: Literal["float32", "float16", "bfloat16"] = "float32"
     batch_size: int = Field(default=64, ge=1, le=512)
     image_size: int = Field(default=224, ge=64, le=1024)
     num_workers: int = Field(default=2, ge=0, le=16)
@@ -246,9 +263,7 @@ class MLSettings(_BaseSettings):
         if not url:
             return None
         if any(character in url for character in "[]()"):
-            raise ValueError(
-                "QWEN_EMBEDDING_URL must be a plain URL, not a Markdown link"
-            )
+            raise ValueError("QWEN_EMBEDDING_URL must be a plain URL, not a Markdown link")
         if not url.startswith(("http://", "https://")):
             raise ValueError("QWEN_EMBEDDING_URL must start with http:// or https://")
         return url.rstrip("/")
@@ -542,7 +557,15 @@ class Settings(_BaseSettings):
             "Qwen3-VL-Embedding-2B": 2048,
         }
         expected = known_dimensions.get(self.ml.encoder_name)
-        if expected is not None and expected != self.qdrant.vector_size:
+        if (
+            expected is not None
+            and expected != self.qdrant.vector_size
+            and not self.qdrant.allow_named_vector_writes
+            and not self.qdrant.write_vector_name
+            and not (
+                "qwen" in self.ml.encoder_name.lower() and self.qdrant.vector_size in {768, 2048}
+            )
+        ):
             raise ValueError(
                 f"ML_ENCODER_NAME={self.ml.encoder_name} emits {expected} dimensions "
                 f"but QDRANT_VECTOR_SIZE={self.qdrant.vector_size}. "

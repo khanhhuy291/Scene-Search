@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Sidebar } from '../components/layout/Sidebar'
+import { TraceExplorer } from '../components/admin/TraceExplorer'
+import { EvaluationBenchmark } from '../components/admin/EvaluationBenchmark'
 import { DashboardOverview } from '../components/admin/DashboardOverview'
 import { UserManagementTable } from '../components/admin/UserManagementTable'
 import { CeleryTaskInspector } from '../components/admin/CeleryTaskInspector'
 import { CorpusHealth } from '../components/admin/CorpusHealth'
+import { RLHFFeedbackTable } from '../components/admin/RLHFFeedbackTable'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { getAdminTelemetry } from '../api/admin'
@@ -11,7 +14,7 @@ import { formatBytes } from '../lib/formatBytes'
 import { Shield, Database, HardDrive, RefreshCw } from 'lucide-react'
 
 export const AdminPage = () => {
-  const [activeTab, setActiveTab] = useState('corpus')
+  const [activeTab, setActiveTab] = useState('traces')
   const [isCollapsed, setIsCollapsed] = useState(false)
   const { token } = useAuth()
   const { addToast } = useToast()
@@ -80,11 +83,14 @@ export const AdminPage = () => {
           </div>
         ) : null}
 
+        {activeTab === 'traces' && <TraceExplorer />}
+        {activeTab === 'eval' && <EvaluationBenchmark />}
         {activeTab === 'corpus' && <CorpusHealth telemetry={telemetry} />}
         {activeTab === 'overview' && (
           <DashboardOverview telemetry={telemetry} onRefresh={refresh} loading={loading} />
         )}
         {activeTab === 'users' && <UserManagementTable />}
+        {activeTab === 'rlhf' && <RLHFFeedbackTable />}
         {activeTab === 'tasks' && (
           <CeleryTaskInspector telemetry={telemetry} onRefresh={refresh} loading={loading} />
         )}

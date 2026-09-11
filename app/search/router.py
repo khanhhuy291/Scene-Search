@@ -32,6 +32,7 @@ class UnifiedAnalysisResult:
     domain_verdict: DomainVerdict
     is_driving_scene: bool
     reason: str
+    english_query: str | None = None
     visual_hyde_caption: str | None = None
 
 
@@ -53,6 +54,7 @@ Analyze user query and output ONLY a raw JSON object (no thinking, no reasoning,
   "is_driving_scene": boolean, // true for any scene observable from a vehicle, dashcam, traffic or street camera (including cars, trucks, bikes, pedestrians, animals/pets on road or roadside, traffic lights, signs, parking, weather, road conditions). ONLY false for completely non-visual/unrelated topics like cooking recipes, video games, celebrities, math equations, or software code.
   "reason": "short explanation under 10 words",
   "is_complex": boolean, // true if describing maneuvers/accidents/interactions. false for simple objects.
+  "english_query": "natural, concise English translation of the visual query",
   "visual_hyde_caption": "2-3 sentences of dashcam/street POV scene description in English (or null)"
 }
 """
@@ -125,6 +127,7 @@ class UnifiedAgentRouter:
                 is_driving = bool(data.get("is_driving_scene", True))
                 reason = str(data.get("reason", "LLM domain evaluation"))
                 is_complex = bool(data.get("is_complex", False))
+                english_query = data.get("english_query")
                 hyde_caption = data.get("visual_hyde_caption")
 
                 if not is_driving:
@@ -134,6 +137,7 @@ class UnifiedAgentRouter:
                         domain_verdict=DomainVerdict.OUT_OF_DOMAIN,
                         is_driving_scene=False,
                         reason=reason,
+                        english_query=english_query,
                         visual_hyde_caption=None,
                     )
 
@@ -147,6 +151,7 @@ class UnifiedAgentRouter:
                     domain_verdict=DomainVerdict.IN_DOMAIN,
                     is_driving_scene=True,
                     reason=reason,
+                    english_query=english_query,
                     visual_hyde_caption=hyde_caption if settings.hyde_enabled else None,
                 )
         except Exception as exc:

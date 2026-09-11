@@ -18,17 +18,36 @@ from pipelines.common.types import FrameRecord
 
 
 async def acquire_video(ctx: PipelineContext, raw_storage: MinIOStorage) -> Path:
-    if not ctx.raw_minio_key.strip():
+    candidates = []
+    if ctx.raw_minio_key and ctx.raw_minio_key.strip():
+        candidates.append(ctx.raw_minio_key.strip())
+    vid = str(ctx.video_id).strip()
+    for ext in (".mp4", ".mov", ".MP4", ".MOV", ".webm", ".mkv"):
+        candidates.append(f"{vid}{ext}")
+        candidates.append(f"raw/{vid}/source{ext}")
+        candidates.append(f"videos/{vid}{ext}")
+
+    seen = set()
+    unique_candidates = [k for k in candidates if k and not (k in seen or seen.add(k))]
+
+    if not unique_candidates:
         raise VideoAcquireError("Video has no raw MinIO object key", stage="acquire")
-    suffix = Path(ctx.raw_minio_key).suffix or ".bin"
+
+    suffix = Path(unique_candidates[0]).suffix or ".mp4"
     destination = ctx.open_temp_dir() / f"input{suffix.lower()}"
-    try:
-        await asyncio.to_thread(raw_storage.download_file, ctx.raw_minio_key, destination)
-    except Exception as exc:
-        raise RetryableVideoAcquireError("Unable to download raw video", stage="acquire") from exc
-    if not destination.is_file():
-        raise VideoAcquireError("Raw video download produced no file", stage="acquire")
-    return destination
+
+    last_exc = None
+    for cand in unique_candidates:
+        try:
+            await asyncio.to_thread(raw_storage.download_file, cand, destination)
+            if destination.is_file() and destination.stat().st_size > 0:
+                ctx.raw_minio_key = cand
+                return destination
+        except Exception as exc:
+            last_exc = exc
+            continue
+
+    raise RetryableVideoAcquireError("Unable to download raw video", stage="acquire") from last_exc
 
 
 def validate_video(path: Path, *, max_duration_s: float, max_pixels: int) -> None:

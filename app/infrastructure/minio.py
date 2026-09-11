@@ -156,6 +156,25 @@ class MinIOStorage:
         except (MinioException, OSError, ValueError) as exc:
             raise MinIOError(f"Unable to create a URL for object {object_name!r}") from exc
 
+    def get_presigned_upload_url(
+        self,
+        object_name: str,
+        *,
+        expires: timedelta | None = None,
+    ) -> str:
+        """Generate a temporary PUT upload URL for direct client-to-storage uploads."""
+        if not object_name.strip():
+            raise ValueError("object_name cannot be empty")
+        if expires is None:
+            expires = timedelta(seconds=self.settings.url_ttl_seconds)
+        if not timedelta(seconds=1) <= expires <= timedelta(days=7):
+            raise ValueError("expires must be between one second and seven days")
+        try:
+            self.ensure_bucket()
+            return self.client.presigned_put_object(self.bucket, object_name, expires=expires)
+        except (MinioException, OSError, ValueError) as exc:
+            raise MinIOError(f"Unable to create upload URL for object {object_name!r}") from exc
+
 
 _storage: MinIOStorage | None = None
 _raw_storage: MinIOStorage | None = None

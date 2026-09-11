@@ -56,8 +56,10 @@ async def test_failed_video_can_be_claimed_and_requeued() -> None:
 
     with (
         patch("api.v1.ingestion.asyncio.to_thread", run_inline),
+        patch("api.v1.ingestion.get_raw_storage"),
         patch("api.v1.ingestion.corpus.upsert_video", AsyncMock(return_value=(video_id, False))),
         patch("api.v1.ingestion.corpus.is_video_indexed", AsyncMock(return_value=False)),
+        patch("api.v1.ingestion.corpus.set_video_assets", AsyncMock()),
         patch(
             "api.v1.ingestion.corpus.claim_video_ingestion",
             AsyncMock(return_value=True),

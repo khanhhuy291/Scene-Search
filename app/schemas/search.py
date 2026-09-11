@@ -132,8 +132,8 @@ class SearchRequest(BaseModel):
     filters: SearchFilters = Field(default_factory=SearchFilters)
 
     # Frames answer "which instant"; segments answer "which few seconds should I
-    # watch". Both live in one collection, separated by this field.
-    granularity: Granularity = "frame"
+    # watch". Both live in one collection. None searches across both.
+    granularity: Granularity | None = None
 
     limit: int = Field(default=20, ge=1, le=MAX_LIMIT)
 

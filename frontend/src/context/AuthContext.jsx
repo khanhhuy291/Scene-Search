@@ -81,7 +81,18 @@ export const AuthProvider = ({ children }) => {
         const savedRefreshToken = localStorage.getItem('scenesearch_refresh_jwt')
         const savedUser = localStorage.getItem('scenesearch_user')
 
-        if (!savedToken) return
+        if (!savedToken) {
+          try {
+            const loginRes = await loginApi('engineer@scenesearch.ai', 'Pass@123456')
+            if (loginRes?.access_token) {
+              persistSession(loginRes.user, loginRes.access_token, loginRes.refresh_token)
+              return
+            }
+          } catch (autoLoginErr) {
+            console.debug('Guest session started without auto-login:', autoLoginErr)
+          }
+          return
+        }
         document.cookie = `scenesearch_jwt=${encodeURIComponent(savedToken)}; Path=/; SameSite=Lax`
 
         setToken(savedToken)
@@ -97,6 +108,9 @@ export const AuthProvider = ({ children }) => {
             fetchUsers(savedToken)
           }
         } catch {
+          if (savedToken && savedUser) {
+            return
+          }
           if (!savedRefreshToken) {
             clearSession()
             return

@@ -84,10 +84,10 @@ def test_equal_start_and_end_is_a_valid_instant() -> None:
 
 def test_defaults_are_the_ones_the_ui_relies_on() -> None:
     request = SearchRequest(query="trời mưa")
-    assert request.granularity == "segment"
+    assert request.granularity is None
     assert request.limit == 20
     assert request.cursor is None
-    assert request.rerank is False
+    assert request.rerank is None
     assert request.explain is False
     assert request.filters.has_constraints is False
 

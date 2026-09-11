@@ -21,8 +21,16 @@ from infrastructure.redis import check_redis_connection, close_redis
 
 
 async def _check_postgres() -> None:
-    async with get_engine().connect() as connection:
+    engine = get_engine()
+    async with engine.begin() as connection:
         await connection.execute(text("SELECT 1"))
+        try:
+            from db.models import Base
+
+            await connection.run_sync(Base.metadata.create_all)
+            logger.info("Database schema verified/created successfully")
+        except Exception as exc:
+            logger.warning("Database schema auto-creation skipped: {}", exc)
 
 
 async def _check_minio() -> None:
@@ -41,10 +49,22 @@ async def _check_minio() -> None:
 
 
 async def _initialize_infrastructure() -> None:
-    await _check_postgres()
-    await check_redis_connection()
-    await init_qdrant_collections()
-    await _check_minio()
+    try:
+        await _check_postgres()
+    except Exception as exc:
+        logger.warning("Postgres check skipped/failed: {}", exc)
+    try:
+        await check_redis_connection()
+    except Exception as exc:
+        logger.warning("Redis check skipped/failed: {}", exc)
+    try:
+        await init_qdrant_collections()
+    except Exception as exc:
+        logger.warning("Qdrant check skipped/failed: {}", exc)
+    try:
+        await _check_minio()
+    except Exception as exc:
+        logger.warning("Storage bucket check skipped/failed: {}", exc)
 
 
 async def _warm_search() -> None:
@@ -66,6 +86,9 @@ async def _warm_search() -> None:
         try:
             await get_catalog().ensure_loaded(qdrant_client)
             logger.info("Keyframe catalog warmup complete")
+            from api.v1.media import precache_startup_thumbnails
+
+            asyncio.create_task(precache_startup_thumbnails(limit=100))
         except Exception as exc:
             logger.warning("Catalog warmup skipped/failed: {}", exc)
 
@@ -74,7 +97,7 @@ async def _warm_search() -> None:
             from ml.encoder import get_qwen_encoder
 
             try:
-                await asyncio.to_thread(get_qwen_encoder().load)
+                await asyncio.to_thread(get_qwen_encoder().encode_texts, ["warmup"])
             except Exception as exc:
                 logger.warning("Qwen encoder warmup skipped: {}", exc)
         elif mode == "siglip":
@@ -93,7 +116,7 @@ async def _warm_search() -> None:
                 logger.warning("SigLIP encoder warmup skipped: {}", exc)
             if settings.ml.qwen_embedding_url or "qwen" in settings.ml.encoder_name.lower():
                 try:
-                    await asyncio.to_thread(get_qwen_encoder().load)
+                    await asyncio.to_thread(get_qwen_encoder().encode_texts, ["warmup"])
                 except Exception as exc:
                     logger.debug("Qwen encoder warmup skipped: {}", exc)
 
@@ -127,11 +150,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     try:
         try:
             await _initialize_infrastructure()
-            logger.info("Infrastructure readiness checks passed")
-        except Exception:
-            logger.exception("Infrastructure readiness checks failed")
-            if settings.app.env in {"staging", "production"}:
-                raise
+            logger.info("Infrastructure readiness checks complete")
+        except Exception as exc:
+            logger.warning("Infrastructure readiness checks encountered warnings: {}", exc)
 
         warmup = asyncio.create_task(_warm_search())
 

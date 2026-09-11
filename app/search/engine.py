@@ -259,32 +259,48 @@ class SceneSearchEngine:
         agentic: bool | None = None,
         rerank: bool | None = None,
     ) -> SearchOutcome:
-        parsed = parse_query(query)
-        if require is not None:
-            parsed = replace(parsed, required=tuple(dict.fromkeys(require)))
-        if exclude is not None:
-            parsed = replace(parsed, excluded=tuple(dict.fromkeys(exclude)))
+        from core.tracer import get_tracer
+
+        tracer = get_tracer()
+        trace_ctx = tracer.create_context(query=query, trace_type="search")
+
+        with trace_ctx.span("1. Phân tích cú pháp & Chuẩn hóa từ khóa", category="parser") as s:
+            parsed = parse_query(query)
+            if require is not None:
+                parsed = replace(parsed, required=tuple(dict.fromkeys(require)))
+            if exclude is not None:
+                parsed = replace(parsed, excluded=tuple(dict.fromkeys(exclude)))
+            s["required"] = list(parsed.required)
+            s["excluded"] = list(parsed.excluded)
+            s["embedding_text"] = parsed.embedding_text
 
         tuning = get_settings().search
         if mode is None:
             mode = tuning.mode
-        use_agentic = tuning.agentic_enabled if agentic is None else agentic
+        use_agentic = (
+            (tuning.agentic_enabled and self._client is None) if agentic is None else agentic
+        )
         if not use_agentic:
-            outcome = await self._execute_core_search(
-                query=query,
-                parsed=parsed,
-                limit=limit,
-                cursor=cursor,
-                mode=mode,
-                filters=filters,
-                granularity=granularity,
-                video_ids=video_ids,
-                min_score=min_score,
-                explain=explain,
-                strict=strict,
-                hyde_caption=None,
-                extra_signals=(),
-            )
+            with trace_ctx.span(
+                f"2. Truy xuất Vector & Lọc ({mode.upper()})", category="vectordb"
+            ) as s:
+                outcome = await self._execute_core_search(
+                    query=query,
+                    parsed=parsed,
+                    limit=limit,
+                    cursor=cursor,
+                    mode=mode,
+                    filters=filters,
+                    granularity=granularity,
+                    video_ids=video_ids,
+                    min_score=min_score,
+                    explain=explain,
+                    strict=strict,
+                    hyde_caption=None,
+                    extra_signals=(),
+                )
+                s["matches_found"] = len(outcome.matches)
+                s["total_videos"] = outcome.total_videos
         else:
             from search.agent import get_agent_orchestrator
 
@@ -295,43 +311,62 @@ class SceneSearchEngine:
                 step_hyde: str | None,
                 step_signals: list[str],
             ) -> SearchOutcome:
-                return await self._execute_core_search(
-                    query=query,
-                    parsed=step_parsed,
-                    limit=limit,
-                    cursor=cursor,
-                    mode=mode,
-                    filters=filters,
-                    granularity=granularity,
-                    video_ids=video_ids,
-                    min_score=min_score,
-                    explain=explain,
-                    strict=strict,
-                    hyde_caption=step_hyde,
-                    extra_signals=tuple(step_signals),
-                )
+                with trace_ctx.span(
+                    f"3. Quét Vector Qdrant ({mode.upper()})", category="vectordb"
+                ) as s:
+                    res = await self._execute_core_search(
+                        query=query,
+                        parsed=step_parsed,
+                        limit=limit,
+                        cursor=cursor,
+                        mode=mode,
+                        filters=filters,
+                        granularity=granularity,
+                        video_ids=video_ids,
+                        min_score=min_score,
+                        explain=explain,
+                        strict=strict,
+                        hyde_caption=step_hyde,
+                        extra_signals=tuple(step_signals),
+                    )
+                    s["matches_found"] = len(res.matches)
+                    s["total_videos"] = res.total_videos
+                    return res
 
-            outcome, _ = await orchestrator.execute(
-                raw_query=query,
-                parsed=parsed,
-                retrieval_executor=_executor,
-            )
+            with trace_ctx.span("2. Agentic Router & Visual-HyDE (LLM)", category="llm") as s:
+                outcome, trace_info = await orchestrator.execute(
+                    raw_query=query,
+                    parsed=parsed,
+                    retrieval_executor=_executor,
+                )
+                s["route"] = trace_info.route.value
+                s["domain"] = trace_info.domain_verdict.value
+                s["reason"] = trace_info.route_reason
+                s["hyde_caption"] = trace_info.hyde_caption
 
         should_rerank = tuning.rerank_enabled if rerank is None else rerank
         if should_rerank and outcome.matches:
             from ml.reranker import get_reranker
 
-            reranker = get_reranker()
-            reranked_matches = await asyncio.to_thread(
-                reranker.rerank, query, outcome.matches, top_k=limit
-            )
-            outcome = replace(
-                outcome,
-                matches=tuple(reranked_matches),
-                signals_used=(*outcome.signals_used, "rerank")
-                if "rerank" not in outcome.signals_used
-                else outcome.signals_used,
-            )
+            with trace_ctx.span("4. Cross-Encoder Reranker", category="rerank") as s:
+                reranker = get_reranker()
+                reranked_matches = await asyncio.to_thread(
+                    reranker.rerank, query, outcome.matches, top_k=limit
+                )
+                s["reranked_count"] = len(reranked_matches)
+                outcome = replace(
+                    outcome,
+                    matches=tuple(reranked_matches),
+                    signals_used=(*outcome.signals_used, "rerank")
+                    if "rerank" not in outcome.signals_used
+                    else outcome.signals_used,
+                )
+
+        trace_ctx.record_metric("matches_count", len(outcome.matches))
+        trace_ctx.record_metric("total_videos", outcome.total_videos)
+        trace_ctx.record_metric("signals_used", list(outcome.signals_used))
+        trace_ctx.record_metric("took_ms", round(outcome.took_ms, 2))
+        tracer.record(trace_ctx.finish(status="ok" if not outcome.degraded else "degraded"))
 
         return outcome
 

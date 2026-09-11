@@ -27,7 +27,9 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(
         default_factory=list, description="Previous conversation turns"
     )
-    limit: int = Field(default=3, ge=1, le=10, description="Number of candidate scenes to inspect")
+    limit: int = Field(
+        default=6, ge=1, le=10, description="Number of candidate scenes to inspect (up to 10)"
+    )
 
 
 class SceneSource(BaseModel):

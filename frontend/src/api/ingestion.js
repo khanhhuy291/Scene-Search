@@ -34,8 +34,62 @@ export const deleteVideo = async (videoId, token) => {
   return parseResponse(response)
 }
 
-export const uploadVideo = (file, onProgress, token) =>
-  new Promise((resolve, reject) => {
+export const uploadVideo = async (file, onProgress, token) => {
+  try {
+    // Step 1: Request Presigned URL from Backend (bypasses Cloud Run 32MB GFE limit)
+    const presignedRes = await fetch(`${API_BASE}/ingest/presigned-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(token)
+      },
+      body: JSON.stringify({
+        filename: file.name,
+        content_type: file.type || 'video/mp4'
+      })
+    })
+
+    if (presignedRes.ok) {
+      const { upload_url, video_id, raw_key } = await presignedRes.json()
+
+      // Step 2: Upload file directly to Cloud Storage (MinIO / GCS) via PUT with progress
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('PUT', upload_url)
+        if (file.type) xhr.setRequestHeader('Content-Type', file.type)
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100))
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else reject(new Error(`Storage direct upload failed (${xhr.status})`))
+        }
+        xhr.onerror = () => reject(new Error('Network error during storage direct upload'))
+        xhr.send(file)
+      })
+
+      // Step 3: Trigger background AI ingestion task on Backend
+      const processRes = await fetch(`${API_BASE}/ingest/process`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders(token)
+        },
+        body: JSON.stringify({
+          video_id,
+          raw_key,
+          filename: file.name
+        })
+      })
+
+      return parseResponse(processRes)
+    }
+  } catch (err) {
+    console.warn('Presigned direct upload encountered error, attempting fallback:', err)
+  }
+
+  // Fallback to multipart upload for small files or local mode
+  return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest()
     const form = new FormData()
     form.append('file', file)
@@ -52,3 +106,4 @@ export const uploadVideo = (file, onProgress, token) =>
     request.onerror = () => reject(new Error('Cannot reach the ingestion API'))
     request.send(form)
   })
+}

@@ -36,7 +36,7 @@ def test_mismatched_encoder_dimension_is_rejected_at_startup() -> None:
     with pytest.raises(ValidationError) as excinfo:
         Settings(
             ml=MLSettings(encoder_name="ViT-SO400M-14-SigLIP-384"),
-            qdrant=QdrantSettings(vector_size=768),
+            qdrant=QdrantSettings(vector_size=768, allow_named_vector_writes=False),
         )
     assert "1152" in str(excinfo.value)
 
@@ -128,11 +128,7 @@ def test_qwen_embedding_url_accepts_legacy_ml_prefixed_environment(monkeypatch) 
 
 def test_qwen_embedding_url_rejects_markdown_link() -> None:
     with pytest.raises(ValidationError, match="plain URL"):
-        MLSettings(
-            qwen_embedding_url=(
-                "[http://qwen-embedding:8001](http://qwen-embedding:8001)"
-            )
-        )
+        MLSettings(qwen_embedding_url=("[http://qwen-embedding:8001](http://qwen-embedding:8001)"))
 
 
 @pytest.mark.parametrize(

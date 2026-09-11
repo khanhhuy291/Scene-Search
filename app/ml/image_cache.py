@@ -49,7 +49,7 @@ class KeyframeImageCache:
         self,
         items: Sequence[tuple[str, str]],  # List of (video_id, frame_name)
         *,
-        bucket: str = "scenesearch-derived",
+        bucket: str | None = None,
     ) -> list[Image.Image | None]:
         """Batch retrieve images with RAM -> Redis -> MinIO tiered fallback."""
         if not items:
@@ -106,18 +106,34 @@ class KeyframeImageCache:
         from infrastructure.minio import MinIOStorage
 
         settings = get_settings().minio
-        storage = MinIOStorage(settings, bucket=bucket)
+        target_bucket = (
+            bucket if (bucket and bucket != "scenesearch-derived") else settings.derived_bucket
+        )
+        storage = MinIOStorage(settings, bucket=target_bucket)
 
         async def _fetch_one_minio(idx: int) -> None:
             vid, fname = items[idx]
             clean_name = Path(fname).name if fname else f"frame_{idx:05d}.jpg"
-            object_name = f"frames/{vid}/{clean_name}"
             key = self._cache_key(vid, fname)
 
             try:
 
                 def _sync_get():
-                    response = storage.client.get_object(storage.bucket, object_name)
+                    candidates = [
+                        f"{vid}/{clean_name}",
+                        f"frames/{vid}/{clean_name}",
+                    ]
+                    for obj_name in candidates:
+                        try:
+                            response = storage.client.get_object(storage.bucket, obj_name)
+                            try:
+                                return response.read()
+                            finally:
+                                response.close()
+                                response.release_conn()
+                        except Exception:
+                            continue
+                    response = storage.client.get_object(storage.bucket, f"{vid}/{clean_name}")
                     try:
                         return response.read()
                     finally:
@@ -138,7 +154,7 @@ class KeyframeImageCache:
                     except Exception:
                         pass
             except Exception as exc:
-                logger.warning(f"Failed to download {object_name} from MinIO: {exc}")
+                logger.warning(f"Failed to download {key} from MinIO: {exc}")
                 results[idx] = None
 
         # Fetch concurrently with semaphore limit

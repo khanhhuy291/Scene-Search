@@ -174,31 +174,84 @@ class QwenVLEmbeddingClient:
         if not url:
             raise QwenEmbeddingError("qwen_embedding_url is not configured")
 
-        payload: dict[str, Any] = {"mode": mode}
-        if texts:
-            payload["texts"] = list(texts)
-        if images:
-            payload["images"] = [self._image_to_base64(img) for img in images]
-
         headers: dict[str, str] = {}
         if self.settings.qwen_embedding_api_key:
             headers["Authorization"] = (
                 f"Bearer {self.settings.qwen_embedding_api_key.get_secret_value()}"
             )
 
+        raw_bs = getattr(self.settings, "batch_size", 16)
+        batch_size = max(1, min(raw_bs if isinstance(raw_bs, int) else 16, 32))
+        vectors: list[Vector] = []
+
         try:
             with httpx.Client(timeout=self.settings.qwen_embedding_timeout) as client:
-                response = client.post(
-                    f"{url.rstrip('/')}/embeddings", json=payload, headers=headers
-                )
-                response.raise_for_status()
-                data = response.json()
-                vectors = data.get("embeddings", [])
+
+                def _post_with_retry(payload: dict[str, Any]) -> dict[str, Any]:
+                    import time
+
+                    retries = 4
+                    delay = 1.0
+                    for attempt in range(retries):
+                        try:
+                            resp = client.post(
+                                f"{url.rstrip('/')}/embeddings", json=payload, headers=headers
+                            )
+                            if resp.status_code == 503 and attempt < retries - 1:
+                                time.sleep(delay)
+                                delay = min(delay * 1.5, 4.0)
+                                continue
+                            resp.raise_for_status()
+                            return resp.json()
+                        except httpx.ConnectError:
+                            if attempt < retries - 1:
+                                time.sleep(delay)
+                                delay = min(delay * 1.5, 4.0)
+                                continue
+                            raise
+                    resp = client.post(
+                        f"{url.rstrip('/')}/embeddings", json=payload, headers=headers
+                    )
+                    resp.raise_for_status()
+                    return resp.json()
+
+                if mode == "multimodal" and images and texts:
+                    for start in range(0, len(images), batch_size):
+                        chunk_imgs = images[start : start + batch_size]
+                        chunk_txts = texts[start : start + batch_size]
+                        payload = {
+                            "model": "qwen",
+                            "mode": "multimodal",
+                            "images": [self._image_to_base64(img) for img in chunk_imgs],
+                            "texts": list(chunk_txts),
+                        }
+                        data = _post_with_retry(payload)
+                        vectors.extend(data.get("embeddings", []))
+                elif texts:
+                    for start in range(0, len(texts), batch_size):
+                        chunk_txts = texts[start : start + batch_size]
+                        payload = {
+                            "model": "qwen",
+                            "mode": "text",
+                            "texts": list(chunk_txts),
+                        }
+                        data = _post_with_retry(payload)
+                        vectors.extend(data.get("embeddings", []))
+                elif images:
+                    for start in range(0, len(images), batch_size):
+                        chunk_imgs = images[start : start + batch_size]
+                        payload = {
+                            "model": "qwen",
+                            "mode": "image",
+                            "images": [self._image_to_base64(img) for img in chunk_imgs],
+                        }
+                        data = _post_with_retry(payload)
+                        vectors.extend(data.get("embeddings", []))
+
                 expected = len(texts or images or [])
                 if len(vectors) != expected:
                     raise QwenEmbeddingError(
-                        f"Remote endpoint returned {len(vectors)} embeddings for "
-                        f"{expected} inputs"
+                        f"Remote endpoint returned {len(vectors)} embeddings for {expected} inputs"
                     )
                 if vectors and len(vectors[0]) != self.DEFAULT_DIMENSION:
                     raise QwenEmbeddingError(
@@ -206,6 +259,10 @@ class QwenVLEmbeddingClient:
                         f"expected {self.DEFAULT_DIMENSION}"
                     )
                 return self._normalize(vectors)
+        except httpx.HTTPStatusError as exc:
+            raise QwenEmbeddingError(
+                f"Remote Qwen embedding HTTP {exc.response.status_code}: {exc.response.text}"
+            ) from exc
         except Exception as exc:
             raise QwenEmbeddingError(f"Remote Qwen embedding request failed: {exc}") from exc
 
@@ -254,7 +311,7 @@ class QwenVLEmbeddingClient:
         # mutated because the pipeline still owns them.
         prepared, owned = self._prepare_images(images)
         try:
-            if self.settings.qwen_embedding_url:
+            if self._st_model is None and self.settings.qwen_embedding_url:
                 return self._encode_remote(images=prepared, mode="image")
 
             self.load()
@@ -276,7 +333,7 @@ class QwenVLEmbeddingClient:
         if not texts:
             return []
 
-        if self.settings.qwen_embedding_url:
+        if self._st_model is None and self.settings.qwen_embedding_url:
             return self._encode_remote(texts=texts, mode="text")
 
         self.load()
@@ -303,7 +360,7 @@ class QwenVLEmbeddingClient:
         if not images:
             return []
 
-        if self.settings.qwen_embedding_url:
+        if self._st_model is None and self.settings.qwen_embedding_url:
             prepared, owned = self._prepare_images(images)
             try:
                 return self._encode_remote(images=prepared, texts=texts, mode="multimodal")

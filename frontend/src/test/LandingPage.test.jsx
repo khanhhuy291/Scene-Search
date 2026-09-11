@@ -37,7 +37,7 @@ describe('LandingPage Hero Section & Brutalist Auth Integration', () => {
 
     // Requirement 5: Floating pill search bar
     expect(screen.getByPlaceholderText(/SEARCH ANYTHING/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /SEARCH/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /SEARCH ⌘ \//i })).toBeInTheDocument()
   })
 
   it('opens brutalist auth modal when clicking SIGN UP and allows 1-click demo autofill in SIGN IN mode', () => {
@@ -154,5 +154,24 @@ describe('LandingPage Hero Section & Brutalist Auth Integration', () => {
     expect(
       screen.getByText(/Qwen3-VL Embedding 2B was selected as the default retrieval model for online SceneSearch search, providing a strong balance between retrieval quality and search efficiency./i)
     ).toBeInTheDocument()
+  })
+
+  it('opens brutalist auth modal when submitting search while unauthenticated', () => {
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <AuthProvider>
+            <LandingPage />
+          </AuthProvider>
+        </ToastProvider>
+      </MemoryRouter>
+    )
+
+    const searchInput = screen.getByPlaceholderText(/SEARCH ANYTHING/i)
+    fireEvent.change(searchInput, { target: { value: 'snowy night' } })
+    const searchBtn = screen.getByRole('button', { name: /SEARCH ⌘ \//i })
+    fireEvent.click(searchBtn)
+
+    expect(screen.getByText(/SCENESEARCH \/\/ AUTH PORTAL/i)).toBeInTheDocument()
   })
 })

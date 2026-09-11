@@ -12,34 +12,35 @@ import {
   Sun,
   Moon,
   FolderKanban,
-  BarChart3,
   Download,
   Terminal
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { useTheme } from '../../context/ThemeContext'
+import { useLanguage } from '../../context/LanguageContext'
 import { ProfileModal } from '../auth/ProfileModal'
 
-const NAV_BY_ROLE = {
+const getNavByRole = (t) => ({
   engineer: [
-    { name: 'SEARCH', path: '/search', icon: Search },
-    { name: 'DATASET DRAFT', path: '/datasets/draft', icon: FolderKanban },
-    { name: 'DOWNLOAD', path: '/datasets', icon: Download }
+    { name: t("nav.search"), path: "/search", icon: Search },
+    { name: t("nav.draft"), path: "/datasets/draft", icon: FolderKanban },
+    { name: t("nav.datasets"), path: "/datasets", icon: Download }
   ],
   admin: [
-    { name: 'INGESTION', path: '/ingest', icon: Upload },
-    { name: 'ADMIN PANEL', path: '/admin', icon: LayoutDashboard },
-    { name: 'BENCHMARKS', path: '/eval', icon: BarChart3 }
+    { name: t("nav.ingest"), path: "/ingest", icon: Upload },
+    { name: t("nav.search"), path: "/search", icon: Search },
+    { name: t("nav.admin"), path: "/admin", icon: LayoutDashboard }
   ]
-}
+})
 
-const ANON_NAV = [{ name: 'SEARCH', path: '/search', icon: Search }]
+const getAnonNav = (t) => [{ name: t("nav.search"), path: "/search", icon: Search }]
 
 export const Header = () => {
   const { user, isAuthenticated, logout } = useAuth()
   const { addToast } = useToast()
   const { toggleTheme, isDark } = useTheme()
+  const { language, setLanguage, t } = useLanguage()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
@@ -47,19 +48,21 @@ export const Header = () => {
 
   const handleLogout = () => {
     logout()
-    addToast('Signed out successfully', 'info')
+    addToast('Logged out successfully', 'info')
     setUserDropdownOpen(false)
   }
 
   const handleToggleTheme = () => {
     toggleTheme()
-    const nextMode = isDark ? 'Brutalist Light Mode' : 'Brutalist Dark Mode'
+    const nextMode = isDark ? 'Light Mode' : 'Dark Mode'
     addToast(`Switched to ${nextMode}`, 'info')
   }
 
+  const navConfig = getNavByRole(t)
+  const anonNav = getAnonNav(t)
   const displayLinks = isAuthenticated
-    ? NAV_BY_ROLE[user?.role] || ANON_NAV
-    : ANON_NAV
+    ? navConfig[user?.role] || anonNav
+    : anonNav
 
   const RoleIcon = user?.role === 'admin' ? Shield : User
 
@@ -109,7 +112,48 @@ export const Header = () => {
           {/* Cluster Status Badge */}
           <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-stone-900 border-2 border-black text-black dark:text-white font-mono text-[10px] font-black uppercase tracking-wider shadow-[2px_2px_0px_0px_#000]">
             <span className="w-2 h-2 rounded-full bg-[#00D084] animate-ping" />
-            <span>QDRANT HNSW // ONLINE</span>
+            <span>{t('nav.online')}</span>
+          </div>
+
+          {/* Language Toggle (EN / VI) */}
+          <div className="flex items-center border-2 border-black font-mono text-xs font-black shadow-[2px_2px_0px_0px_#000] bg-white dark:bg-stone-900">
+            <button
+              type="button"
+              onClick={() => {
+                if (language !== "en") {
+                  setLanguage("en")
+                  addToast("Switched language to English", "info")
+                }
+              }}
+              className={`px-2 py-1 transition-colors cursor-pointer ${
+                language === "en"
+                  ? "bg-black text-white dark:bg-[#FF5500] dark:text-black"
+                  : "text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
+              }`}
+              title="Switch to English"
+              aria-label="Switch language to English"
+            >
+              EN
+            </button>
+            <div className="w-[1.5px] h-3.5 bg-black/40 dark:bg-stone-700" />
+            <button
+              type="button"
+              onClick={() => {
+                if (language !== "vi") {
+                  setLanguage("vi")
+                  addToast("Đã chuyển ngôn ngữ sang Tiếng Việt", "info")
+                }
+              }}
+              className={`px-2 py-1 transition-colors cursor-pointer ${
+                language === "vi"
+                  ? "bg-black text-white dark:bg-[#FF5500] dark:text-black"
+                  : "text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
+              }`}
+              title="Chuyển sang Tiếng Việt"
+              aria-label="Switch language to Vietnamese"
+            >
+              VI
+            </button>
           </div>
 
           {/* Theme Mode Toggle */}
@@ -117,7 +161,7 @@ export const Header = () => {
             type="button"
             onClick={handleToggleTheme}
             className="p-2 bg-white dark:bg-stone-900 border-2 border-black text-black dark:text-white hover:bg-[#FF5500] hover:text-black dark:hover:bg-[#FF5500] dark:hover:text-black shadow-[2px_2px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
-            title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
+            title={t(isDark ? "theme.switch_to_light" : "theme.switch_to_dark")}
             aria-label="Toggle Theme Mode"
           >
             {isDark ? (
@@ -175,7 +219,7 @@ export const Header = () => {
                       className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-black text-black dark:text-stone-200 hover:bg-[#FF5500] hover:text-black transition-colors cursor-pointer text-left uppercase"
                     >
                       <User className="w-4 h-4 text-[#FF5500]" />
-                      MY PROFILE & SETTINGS
+                      {t('nav.profile')}
                     </button>
 
                     {displayLinks.map((link) => (
@@ -195,7 +239,7 @@ export const Header = () => {
                       className="flex items-center gap-2.5 px-4 py-2 text-xs font-bold text-black dark:text-stone-200 hover:bg-black hover:text-white transition-colors"
                     >
                       <Terminal className="w-4 h-4 text-[#00D084]" />
-                      LANDING PAGE
+                      {t('nav.about')}
                     </Link>
                   </div>
 
@@ -206,7 +250,7 @@ export const Header = () => {
                       className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-100 dark:bg-red-950/40 border border-red-600 text-red-900 dark:text-red-300 hover:bg-red-600 hover:text-white text-xs font-black uppercase transition-all cursor-pointer"
                     >
                       <LogOut className="w-3.5 h-3.5" />
-                      SIGN OUT
+                      {t('nav.logout')}
                     </button>
                   </div>
                 </div>
@@ -217,7 +261,7 @@ export const Header = () => {
               to="/auth?mode=login"
               className="px-5 py-2 bg-black text-white font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[3px_3px_0px_0px_#FF5500] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all"
             >
-              SIGN IN
+              {t('nav.login')}
             </Link>
           )}
 
@@ -245,7 +289,7 @@ export const Header = () => {
               className="w-full flex items-center gap-3 px-4 py-3 bg-white dark:bg-stone-900 border-2 border-black text-xs font-black uppercase shadow-[2px_2px_0px_0px_#000] text-left"
             >
               <User className="w-4 h-4 text-[#FF5500]" />
-              MY PROFILE & SETTINGS
+              MY {t('nav.profile')}
             </button>
           )}
           {displayLinks.map((link) => (

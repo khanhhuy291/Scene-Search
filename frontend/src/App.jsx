@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext'
 import { DatasetProvider } from './context/DatasetContext'
 import { ToastProvider } from './context/ToastContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { LanguageProvider } from './context/LanguageContext'
 import { Header } from './components/layout/Header'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
 import { DemoNotice } from './components/common/DemoNotice'
@@ -28,15 +29,21 @@ function AppContent() {
     location.pathname === '/' || location.pathname === '/landing' || location.pathname === '/auth'
 
   return (
-    <div className={`min-h-screen flex flex-col ${isStandaloneBrutalist ? 'bg-[#F7F4EE]' : 'bg-[#F5F0E8] dark:bg-[#181512]'} text-stone-900 dark:text-[#f3ece4] selection:bg-orange-100 dark:selection:bg-[#1d352b] selection:text-orange-900 dark:selection:text-[#c1d2c6] transition-colors duration-300`}>
+    <div className={`min-h-screen flex flex-col ${isStandaloneBrutalist ? 'bg-[#F7F4EE] dark:bg-[#12110F]' : 'bg-[#F5F0E8] dark:bg-[#181512]'} text-stone-900 dark:text-[#f3ece4] selection:bg-orange-100 dark:selection:bg-[#1d352b] selection:text-orange-900 dark:selection:text-[#c1d2c6] transition-colors duration-300`}>
       {!isStandaloneBrutalist && <DemoNotice />}
       {!isStandaloneBrutalist && <Header />}
 
       <div className="flex-1">
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/landing" element={<LandingPage />} />
-          <Route path="/search" element={<SearchPage />} />
+          <Route
+            path="/search"
+            element={
+              <ProtectedRoute roles={['engineer', 'admin']}>
+                <SearchPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/auth" element={<AuthPage />} />
 
           <Route
@@ -106,13 +113,15 @@ export default function App() {
   return (
     <BrowserRouter basename={basename === '/' ? undefined : basename}>
       <ThemeProvider>
-        <ToastProvider>
-          <AuthProvider>
-            <DatasetProvider>
-              <AppContent />
-            </DatasetProvider>
-          </AuthProvider>
-        </ToastProvider>
+        <LanguageProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <DatasetProvider>
+                <AppContent />
+              </DatasetProvider>
+            </AuthProvider>
+          </ToastProvider>
+        </LanguageProvider>
       </ThemeProvider>
     </BrowserRouter>
   )

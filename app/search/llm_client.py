@@ -51,39 +51,56 @@ class LLMClient:
             "Content-Type": "application/json",
         }
 
-        payload: dict[str, Any] = {
-            "model": self._settings.llm.model,
-            "messages": messages,
-            "temperature": (
-                temperature if temperature is not None else self._settings.llm.temperature
-            ),
-            "max_tokens": max_tokens,
-        }
-        if response_format:
-            payload["response_format"] = response_format
+        models_to_try = [self._settings.llm.model]
+        for alt in [
+            "meta/llama-3.2-11b-vision-instruct",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        ]:
+            if alt != self._settings.llm.model:
+                models_to_try.append(alt)
+
+        timeout_sec = max(20.0, getattr(self._settings.llm, "timeout", 10.0))
 
         try:
-            async with httpx.AsyncClient(timeout=self._settings.llm.timeout) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                if response.status_code != 200:
-                    logger.warning(
-                        "LLM API returned status {status}: {text}",
-                        status=response.status_code,
-                        text=response.text[:200],
-                    )
-                    return None
-                data = response.json()
-                choices = data.get("choices")
-                if not choices or not isinstance(choices, list):
-                    return None
-                content = choices[0].get("message", {}).get("content", "")
-                return content.strip() if content else None
-        except httpx.TimeoutException:
-            logger.warning("LLM request timed out after {}s", self._settings.llm.timeout)
-            return None
+            async with httpx.AsyncClient(timeout=timeout_sec) as client:
+                for model_name in models_to_try:
+                    payload: dict[str, Any] = {
+                        "model": model_name,
+                        "messages": messages,
+                        "temperature": (
+                            temperature
+                            if temperature is not None
+                            else self._settings.llm.temperature
+                        ),
+                        "max_tokens": max_tokens,
+                    }
+                    if response_format:
+                        payload["response_format"] = response_format
+
+                    try:
+                        response = await client.post(url, headers=headers, json=payload)
+                        if response.status_code != 200:
+                            logger.warning(
+                                "LLM Model {} returned status {}: {}; trying fallback...",
+                                model_name,
+                                response.status_code,
+                                response.text[:200],
+                            )
+                            continue
+                        data = response.json()
+                        choices = data.get("choices")
+                        if not choices or not isinstance(choices, list):
+                            continue
+                        content = choices[0].get("message", {}).get("content", "")
+                        if content:
+                            return content.strip()
+                    except (httpx.TimeoutException, httpx.RequestError) as err:
+                        logger.warning("LLM Model {} request timed out/error: {}", model_name, err)
+                        continue
         except Exception as exc:
             logger.warning("LLM completion failed gracefully: {}", exc)
             return None
+        return None
 
 
 _llm_client: LLMClient | None = None

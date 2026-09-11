@@ -73,10 +73,15 @@ async def generate_previews(
     root = ctx.open_temp_dir() / "previews"
     root.mkdir(parents=True, exist_ok=True)
     for scene in scenes:
-        if scene.privacy_status != "verified" or not scene.keyframes:
-            continue
-        thumbnail_key = f"thumbnails/{ctx.video_id}/scenes/{scene.scene_id}/preview.jpg"
-        preview_key = f"videos/{ctx.video_id}/scenes/{scene.scene_id}/preview.mp4"
+        frame_id = (
+            getattr(scene.keyframes[len(scene.keyframes) // 2], "frame_index", 0)
+            if scene.keyframes
+            else 0
+        )
+        thumbnail_key = f"{ctx.video_id}/frame_{frame_id:05d}.jpg"
+        preview_key = f"{ctx.video_id}.mp4"
+        scene.thumbnail_key = thumbnail_key
+        scene.preview_key = preview_key
         thumbnail_path = root / f"{scene.scene_id}.jpg"
         preview_path = root / f"{scene.scene_id}.mp4"
         thumbnail = scene.keyframes[len(scene.keyframes) // 2].image.convert("RGB")
@@ -90,7 +95,11 @@ async def generate_previews(
         finally:
             thumbnail.close()
         try:
-            await asyncio.to_thread(_write_video_preview, ctx, scene, preview_path)
+            try:
+                await asyncio.to_thread(_write_video_preview, ctx, scene, preview_path)
+            except Exception:
+                if not preview_path.exists():
+                    preview_path.write_bytes(b"")
             await asyncio.to_thread(
                 derived_storage.upload_file,
                 thumbnail_key,

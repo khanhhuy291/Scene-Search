@@ -12,8 +12,8 @@ from loguru import logger
 
 from core.config import Settings, get_settings
 from infrastructure.minio import MinIOStorage, get_derived_storage, get_raw_storage
-from ml.anonymize import BlurRegionDetector, FullFrameDetector
-from ml.encoder import Encoder, get_encoder
+from ml.anonymize import BlurRegionDetector, LabelHeuristicDetector
+from ml.encoder import Encoder, get_qwen_encoder, get_siglip_encoder
 from pipelines.common.context import PipelineContext
 from pipelines.common.errors import (
     PipelineError,
@@ -23,9 +23,9 @@ from pipelines.common.errors import (
 from pipelines.ingestion.anonymizer import anonymize_frames
 from pipelines.ingestion.behavior_detector import NoopBehaviorDetector, TemporalBehaviorDetector
 from pipelines.ingestion.deduplicator import DedupStats, filter_near_duplicates
-from pipelines.ingestion.embedder import embed_frames, embed_scenes
+from pipelines.ingestion.embedder import embed_frames, embed_frames_qwen, embed_scenes
 from pipelines.ingestion.indexer import build_scene_points, persist_vectors
-from pipelines.ingestion.metadata_extractor import extract_metadata
+from pipelines.ingestion.metadata_extractor import extract_metadata, extract_scene_vlm_metadata
 from pipelines.ingestion.preview_generator import generate_previews
 from pipelines.ingestion.privacy_verifier import verified_frames
 from pipelines.ingestion.sampler import sample_frames
@@ -59,6 +59,7 @@ class PipelineDependencies:
     tracker: ObjectTracker
     behavior_detector: TemporalBehaviorDetector
     settings: Settings
+    siglip_encoder: Encoder | None = None
 
 
 def default_dependencies() -> PipelineDependencies:
@@ -67,8 +68,9 @@ def default_dependencies() -> PipelineDependencies:
         scene_indexer=DefaultPipelineIndexer(),
         raw_storage=get_raw_storage(),
         derived_storage=get_derived_storage(),
-        encoder=get_encoder(),
-        privacy_detector=FullFrameDetector(),
+        encoder=get_qwen_encoder(),
+        siglip_encoder=get_siglip_encoder(),
+        privacy_detector=LabelHeuristicDetector(),
         tracker=PassthroughTracker(),
         behavior_detector=NoopBehaviorDetector(),
         settings=get_settings(),
@@ -143,21 +145,31 @@ async def run_ingestion_pipeline(
             tracked = deps.tracker.track(enriched)
             behavior_frames = deps.behavior_detector.detect(tracked)
 
-            await _stage(progress, 40, "frame_embedding_dedup")
+            await _stage(progress, 35, "siglip_embedding_dedup")
+            siglip_enc = deps.siglip_encoder or deps.encoder
             embedded_frames = embed_frames(
                 behavior_frames,
-                encoder=deps.encoder,
+                encoder=siglip_enc,
                 batch_size=deps.settings.ml.batch_size,
             )
             dedup = DedupStats()
-            retained_frames = filter_near_duplicates(
-                embedded_frames,
-                enabled=deps.settings.video.dedup_enabled,
-                threshold=deps.settings.video.dedup_threshold,
-                stats=dedup,
+            retained_frames = list(
+                filter_near_duplicates(
+                    embedded_frames,
+                    enabled=deps.settings.video.dedup_enabled,
+                    threshold=deps.settings.video.dedup_threshold,
+                    stats=dedup,
+                )
             )
 
-            await _stage(progress, 50, "scene_building")
+            await _stage(progress, 50, "qwen_embedding_retained")
+            embed_frames_qwen(
+                retained_frames,
+                encoder=deps.encoder,
+                batch_size=deps.settings.ml.batch_size,
+            )
+
+            await _stage(progress, 60, "scene_building")
             scenes = build_scenes(
                 retained_frames,
                 video_id=video_id,
@@ -173,10 +185,15 @@ async def run_ingestion_pipeline(
             ctx.metrics["dedup_drop_ratio"] = round(dedup.drop_ratio, 6)
             ctx.metrics["scenes_created"] = len(scenes)
 
-            await _stage(progress, 65, "embedding")
+            await _stage(progress, 65, "vlm_metadata_extraction")
+            await extract_scene_vlm_metadata(scenes)
+
+            await _stage(progress, 70, "embedding")
             embeddings = embed_scenes(
                 scenes,
                 encoder=deps.encoder,
+                qwen_encoder=deps.encoder if deps.siglip_encoder is not None else None,
+                siglip_encoder=deps.siglip_encoder,
                 expected_dimension=deps.settings.qdrant.vector_size,
                 model=deps.settings.ml.encoder_name,
                 version=deps.encoder.model_version,
@@ -188,7 +205,7 @@ async def run_ingestion_pipeline(
                 for scene in scenes
             )
 
-            await _stage(progress, 75, "preview_generation")
+            await _stage(progress, 80, "preview_generation")
             uploaded = await generate_previews(ctx, scenes, deps.derived_storage)
 
             await _stage(progress, 85, "persistence")
@@ -209,6 +226,8 @@ async def run_ingestion_pipeline(
             ]
             try:
                 persistence_started = True
+                await deps.repository.delete_segments(video_uuid)
+                await deps.scene_indexer.delete_by_video(video_id)
                 await deps.repository.insert_segments(video_uuid, rows)
                 points = build_scene_points(scenes, embeddings, dataset=video.dataset)
                 written = await persist_vectors(video_id, points, deps.scene_indexer)

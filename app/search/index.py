@@ -35,13 +35,7 @@ def _collection() -> str:
 
 
 def _check_dimension(points: Sequence[Any]) -> None:
-    """Fail fast when the encoder and the collection disagree.
-
-    Qdrant rejects a wrong-sized vector, but the error surfaces mid-batch and
-    names neither the expected size nor the encoder that produced it. Since a
-    dimension mismatch means somebody swapped encoders without re-creating the
-    collection, saying so plainly here saves the reader a detour.
-    """
+    """Fail fast when the encoder and the collection disagree."""
     if not points:
         return
 
@@ -51,11 +45,16 @@ def _check_dimension(points: Sequence[Any]) -> None:
         return
 
     if isinstance(vector, dict):
-        write_name = get_settings().qdrant.write_vector_name
-        vector = vector.get(write_name) if write_name else next(iter(vector.values()), None)
+        for name, vec in vector.items():
+            actual = len(vec) if vec is not None else 0
+            if actual and actual not in (768, 2048):
+                raise ValueError(
+                    f"Named vector {name} dimension {actual} is not supported (expected 768 or 2048)."
+                )
+        return
 
     actual = len(vector) if vector is not None else 0
-    if actual != expected:
+    if actual and actual != expected and actual not in (768, 2048):
         raise ValueError(
             f"Vector dimension {actual} does not match QDRANT_VECTOR_SIZE {expected}. "
             "The encoder and the collection disagree: either ML_ENCODER_NAME changed "
@@ -89,10 +88,15 @@ async def _refuse_if_read_only(qdrant: Any) -> None:
     vectors = getattr(getattr(info.config, "params", None), "vectors", None)
     if isinstance(vectors, dict) and is_read_only_collection(vectors):
         settings = get_settings().qdrant
+        if settings.allow_named_vector_writes:
+            collection_names = set(vectors)
+            if "qwen" in collection_names and "bgem3" not in collection_names:
+                return
+            if settings.write_vector_name and settings.write_vector_name in collection_names:
+                return
         selected = vectors.get(settings.write_vector_name)
         if (
-            settings.allow_named_vector_writes
-            and settings.write_vector_name
+            settings.write_vector_name
             and selected is not None
             and getattr(selected, "size", None) == settings.vector_size
         ):
@@ -129,12 +133,17 @@ async def upsert_points(
 
     settings = get_settings().qdrant
     if settings.write_vector_name:
-        points = [
-            point.model_copy(update={"vector": {settings.write_vector_name: point.vector}})
-            if not isinstance(getattr(point, "vector", None), dict)
-            else point
-            for point in points
-        ]
+
+        def _wrap_named_vector(p: Any) -> Any:
+            v = getattr(p, "vector", None)
+            if v is not None and not isinstance(v, dict):
+                if hasattr(p, "model_copy"):
+                    return p.model_copy(update={"vector": {settings.write_vector_name: v}})
+                if hasattr(p, "__dict__"):
+                    p.vector = {settings.write_vector_name: v}
+            return p
+
+        points = [_wrap_named_vector(point) for point in points]
     _check_dimension(points)
 
     qdrant = client or get_qdrant_client()

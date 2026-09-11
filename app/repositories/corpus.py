@@ -146,19 +146,28 @@ async def set_video_assets(
 async def is_video_indexed(video_id: UUID) -> bool:
     factory = get_session_factory()
     async with factory() as session:
-        ingested_at = await session.scalar(select(Video.ingested_at).where(Video.id == video_id))
-        return ingested_at is not None
+        result = await session.execute(
+            select(Video.ingested_at, Video.ingestion_status).where(Video.id == video_id)
+        )
+        row = result.first()
+        if not row:
+            return False
+        ingested_at, status = row
+        return ingested_at is not None and status == "indexed"
 
 
-async def claim_video_ingestion(video_id: UUID) -> bool:
-    """Atomically reserve a pending or failed video for one ingestion task."""
+async def claim_video_ingestion(video_id: UUID, *, allow_retry: bool = True) -> bool:
+    """Atomically reserve a pending, failed, deleting, or retried video for one ingestion task."""
+    statuses = (
+        ("pending", "failed", "processing", "deleting") if allow_retry else ("pending", "failed")
+    )
     factory = get_session_factory()
     async with factory() as session, session.begin():
         result = await session.execute(
             update(Video)
             .where(
                 Video.id == video_id,
-                Video.ingestion_status.in_(("pending", "failed")),
+                Video.ingestion_status.in_(statuses),
             )
             .values(ingestion_status="processing")
         )

@@ -459,7 +459,8 @@ def test_every_behavioural_case_names_a_rule_that_exists() -> None:
     # band can only ever score zero for a real reason.
     from eval.behavior import behavior_kinds, detect_behaviors
     from eval.suite import default_suite
-    from tests.unit.test_eval_behavior import _track
+
+    from .test_eval_behavior import _track
 
     detected = set(
         behavior_kinds(

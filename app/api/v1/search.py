@@ -17,6 +17,8 @@ generally cannot, and would put a credentialed URL in the page. The proxy in
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, status
 from loguru import logger
 
@@ -170,7 +172,14 @@ async def search_scenes(request: SearchRequest) -> SearchResponse:
             detail="Search is unavailable; the vector index or encoder could not be reached",
         ) from exc
 
-    return _to_response(request, outcome)
+    resp = _to_response(request, outcome)
+    try:
+        from api.v1.media import precache_search_results
+
+        asyncio.create_task(precache_search_results(outcome.matches))
+    except Exception:
+        pass
+    return resp
 
 
 __all__ = ["router"]

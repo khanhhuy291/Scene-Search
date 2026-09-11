@@ -44,6 +44,9 @@ class Repository:
             dataset="test",
         )
 
+    async def delete_segments(self, video_id):
+        pass
+
     async def insert_segments(self, video_id, rows):
         self.rows = list(rows)
         return [row.id for row in rows]
@@ -64,6 +67,9 @@ class Storage:
 class Indexer:
     def __init__(self):
         self.points = []
+
+    async def delete_by_video(self, video_id):
+        pass
 
     async def reindex_video(self, video_id, points):
         self.points = list(points)
@@ -129,8 +135,8 @@ async def test_registered_video_becomes_scene_preview_and_vector(monkeypatch) ->
     assert repository.rows[0].privacy_status == "verified"
     assert len(indexer.points) == 1
     assert storage.uploaded == [
-        f"thumbnails/{VIDEO_ID}/scenes/{repository.rows[0].id}/preview.jpg",
-        f"videos/{VIDEO_ID}/scenes/{repository.rows[0].id}/preview.mp4",
+        f"{VIDEO_ID}/frame_00000.jpg",
+        f"{VIDEO_ID}.mp4",
     ]
 
 

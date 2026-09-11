@@ -44,3 +44,29 @@ const changeEmbeddingModelState = async (action, token) => {
 
 export const loadEmbeddingModel = (token) => changeEmbeddingModelState('load', token)
 export const unloadEmbeddingModel = (token) => changeEmbeddingModelState('unload', token)
+
+export const getSystemTraces = async (token, { limit = 50, traceType } = {}) => {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  if (traceType) params.set('trace_type', traceType)
+  const query = params.toString() ? `?${params.toString()}` : ''
+  const response = await fetch(`${API_BASE}/admin/traces${query}`, {
+    headers: authHeaders(token)
+  })
+  return parseResponse(response)
+}
+
+export const getSystemTraceDetail = async (token, traceId) => {
+  const response = await fetch(`${API_BASE}/admin/traces/${traceId}`, {
+    headers: authHeaders(token)
+  })
+  return parseResponse(response)
+}
+
+export const clearSystemTraces = async (token) => {
+  const response = await fetch(`${API_BASE}/admin/traces`, {
+    method: 'DELETE',
+    headers: authHeaders(token)
+  })
+  return parseResponse(response)
+}

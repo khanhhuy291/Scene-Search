@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from PIL import Image
 
-from core.config import get_settings
+from core.config import MLSettings, get_settings
 from ml.encoder import get_encoder, reset_encoder
 from ml.qwen_encoder import (
     QwenEmbeddingError,
@@ -96,7 +96,7 @@ def test_qwen_client_sentence_transformer_mock():
 def test_qwen_client_load_error_raises_exception(monkeypatch):
     import sys
 
-    client = QwenVLEmbeddingClient()
+    client = QwenVLEmbeddingClient(settings=MLSettings(qwen_embedding_url=None))
     fake_st = MagicMock()
     fake_st.SentenceTransformer.side_effect = RuntimeError("Model download failed")
     monkeypatch.setitem(sys.modules, "sentence_transformers", fake_st)

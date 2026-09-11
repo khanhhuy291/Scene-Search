@@ -34,6 +34,7 @@ def test_all_expected_tables_are_registered() -> None:
         "review_decisions",
         "datasets",
         "ingestion_tasks",
+        "rlhf_feedback",
     }
 
 

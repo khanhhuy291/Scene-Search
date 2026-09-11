@@ -96,6 +96,10 @@ class TriTierAgentOrchestrator:
         # TIER 3: RETRIEVAL & ADAPTIVE REFLECTION LOOP
         # -------------------------------------------------------------
         current_parsed = parsed
+        if analysis.english_query:
+            from dataclasses import replace
+
+            current_parsed = replace(current_parsed, semantic_text=analysis.english_query)
         reflection_loops = 0
         relaxed = False
 

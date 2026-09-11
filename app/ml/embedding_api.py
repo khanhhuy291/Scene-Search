@@ -8,6 +8,7 @@ import binascii
 import gc
 import io
 import threading
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal
@@ -18,10 +19,10 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field, model_validator
 
 from core.config import get_settings
-from ml.qwen_encoder import QwenEmbeddingError, get_qwen_embedding_client
+from ml.qwen_encoder import get_qwen_embedding_client
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
-MAX_BATCH_SIZE = 16
+MAX_BATCH_SIZE = 128
 _inference_lock = threading.Lock()
 _state_lock = threading.Lock()
 _state = "unloaded"
@@ -38,6 +39,7 @@ class ModelBusyError(RuntimeError):
 
 
 class EmbeddingRequest(BaseModel):
+    model: Literal["qwen", "siglip"] = "qwen"
     mode: Literal["text", "image", "multimodal"]
     texts: list[str] = Field(default_factory=list, max_length=MAX_BATCH_SIZE)
     images: list[str] = Field(default_factory=list, max_length=MAX_BATCH_SIZE)
@@ -48,10 +50,13 @@ class EmbeddingRequest(BaseModel):
             raise ValueError("text mode requires texts and does not accept images")
         if self.mode == "image" and (not self.images or self.texts):
             raise ValueError("image mode requires images and does not accept texts")
-        if self.mode == "multimodal" and (
-            not self.images or len(self.images) != len(self.texts)
-        ):
-            raise ValueError("multimodal mode requires equally sized images and texts")
+        if self.mode == "multimodal":
+            if self.model == "siglip":
+                raise ValueError(
+                    "SigLIP does not support joint multimodal pairs; use text or image mode"
+                )
+            if not self.images or len(self.images) != len(self.texts):
+                raise ValueError("multimodal mode requires equally sized images and texts")
         if any(not text.strip() for text in self.texts):
             raise ValueError("texts must not contain empty values")
         return self
@@ -106,13 +111,20 @@ def _set_state(value: str, error: str | None = None) -> None:
         _last_error = error
 
 
-def _begin_inference() -> None:
+def _begin_inference(timeout: float = 60.0) -> None:
     global _state, _active_requests
-    with _state_lock:
-        if _state not in {"ready", "busy"}:
-            raise ModelNotReadyError(f"Qwen embedding model is {_state}; load it first")
-        _active_requests += 1
-        _state = "busy"
+    deadline = time.monotonic() + timeout
+    while True:
+        with _state_lock:
+            if _state in {"ready", "busy"}:
+                _active_requests += 1
+                _state = "busy"
+                return
+            if _state != "loading":
+                raise ModelNotReadyError(f"Qwen embedding model is {_state}; load it first")
+        if time.monotonic() >= deadline:
+            raise ModelNotReadyError("Qwen embedding model loading timed out; try again shortly")
+        time.sleep(0.5)
 
 
 def _end_inference() -> None:
@@ -161,6 +173,9 @@ def _load_model() -> ModelStatusResponse:
     try:
         with _inference_lock:
             get_qwen_embedding_client().load()
+            from ml.encoder import get_siglip_encoder
+
+            get_siglip_encoder().load()
         _set_state("ready")
     except Exception as exc:
         _set_state("error", str(exc))
@@ -180,6 +195,9 @@ def _unload_model() -> ModelStatusResponse:
     try:
         with _inference_lock:
             get_qwen_embedding_client().unload()
+            from ml.encoder import get_siglip_encoder
+
+            get_siglip_encoder().unload()
             gc.collect()
             try:
                 import torch
@@ -197,7 +215,6 @@ def _unload_model() -> ModelStatusResponse:
 
 
 def _encode(request: EmbeddingRequest) -> list[list[float]]:
-    client = get_qwen_embedding_client()
     images = _decode_images(request.images)
     begun = False
     try:
@@ -206,6 +223,15 @@ def _encode(request: EmbeddingRequest) -> list[list[float]]:
         # Serializing inference prevents concurrent API and worker requests from
         # doubling peak activations on smaller GPUs.
         with _inference_lock:
+            if request.model == "siglip":
+                from ml.encoder import get_siglip_encoder
+
+                siglip = get_siglip_encoder()
+                if request.mode == "text":
+                    return siglip.encode_texts(request.texts)
+                return siglip.encode_images(images)
+
+            client = get_qwen_embedding_client()
             if request.mode == "text":
                 return client.encode_texts(request.texts)
             if request.mode == "image":
@@ -220,7 +246,8 @@ def _encode(request: EmbeddingRequest) -> list[list[float]]:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    logger.info("Qwen embedding service ready; model is unloaded until requested by an admin")
+    logger.info("Qwen & SigLIP embedding service ready; auto-loading model in background...")
+    asyncio.create_task(asyncio.to_thread(_load_model))
     yield
     try:
         await asyncio.to_thread(_unload_model)
@@ -230,7 +257,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         logger.warning("Embedding service stopped while the model was busy")
 
 
-app = FastAPI(title="Qwen Embedding Service", lifespan=lifespan)
+app = FastAPI(title="Qwen & SigLIP Embedding Service", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -288,12 +315,15 @@ async def embeddings(
         vectors = await asyncio.to_thread(_encode, request)
     except ModelNotReadyError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except QwenEmbeddingError as exc:
-        logger.exception("Qwen embedding inference failed")
+    except Exception as exc:
+        logger.exception("Embedding inference failed")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    dimension = len(vectors[0]) if vectors else 0
+    dimension = len(vectors[0]) if vectors else (768 if request.model == "siglip" else 2048)
+    model_name = (
+        "ViT-B-16-SigLIP" if request.model == "siglip" else get_settings().ml.qwen_model_name
+    )
     return EmbeddingResponse(
         embeddings=vectors,
-        model=get_settings().ml.qwen_model_name,
+        model=model_name,
         dimension=dimension,
     )

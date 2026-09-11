@@ -1,4 +1,4 @@
-"""Batched scene embedding using the existing process-scoped encoder."""
+"""Batched scene embedding supporting SigLIP and Qwen models."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pipelines.common.types import EmbeddingRecord, SceneRecord
 
 
 def embed_frames(scenes_or_frames, *, encoder: Encoder, batch_size: int):
-    """Attach image vectors to frames in bounded encoder batches."""
+    """Attach visual vectors (e.g. SigLIP) to frames in bounded encoder batches for dedup."""
     frames = list(scenes_or_frames)
     for start in range(0, len(frames), batch_size):
         batch = frames[start : start + batch_size]
@@ -20,6 +20,19 @@ def embed_frames(scenes_or_frames, *, encoder: Encoder, batch_size: int):
             raise EmbeddingError("Encoder returned the wrong number of vectors", stage="embedding")
         for frame, vector in zip(batch, vectors, strict=True):
             frame.embedding = vector
+    return frames
+
+
+def embed_frames_qwen(scenes_or_frames, *, encoder: Encoder, batch_size: int):
+    """Attach Qwen multimodal/visual vectors to retained frames."""
+    frames = list(scenes_or_frames)
+    for start in range(0, len(frames), batch_size):
+        batch = frames[start : start + batch_size]
+        vectors = encoder.encode_images([frame.image for frame in batch])
+        if len(vectors) != len(batch):
+            raise EmbeddingError("Encoder returned the wrong number of vectors", stage="embedding")
+        for frame, vector in zip(batch, vectors, strict=True):
+            frame.qwen_embedding = vector
     return frames
 
 
@@ -37,31 +50,72 @@ def _mean_normalized(vectors: Sequence[list[float]]) -> list[float]:
 def embed_scenes(
     scenes: Sequence[SceneRecord],
     *,
-    encoder: Encoder,
-    expected_dimension: int,
-    model: str,
-    version: str,
-    batch_size: int,
+    encoder: Encoder | None = None,
+    qwen_encoder: Encoder | None = None,
+    siglip_encoder: Encoder | None = None,
+    expected_dimension: int = 2048,
+    model: str = "qwen",
+    version: str = "v1",
+    batch_size: int = 8,
 ) -> list[EmbeddingRecord]:
     if batch_size < 1:
         raise ValueError("batch_size must be positive")
+
+    primary_encoder = qwen_encoder or encoder
+    if primary_encoder is None:
+        raise ValueError("At least one encoder must be provided")
+
     output: list[EmbeddingRecord] = []
     for scene in scenes:
-        vectors = [frame.embedding for frame in scene.keyframes]
-        if any(vector is None for vector in vectors):
-            images = [frame.image for frame in scene.keyframes]
-            vectors = []
-            for start in range(0, len(images), batch_size):
-                vectors.extend(encoder.encode_images(images[start : start + batch_size]))
-        vector = _mean_normalized(vectors)
-        if len(vector) != expected_dimension:
-            raise EmbeddingError(
-                f"Embedding dimension {len(vector)} does not match Qdrant dimension "
-                f"{expected_dimension}",
-                stage="embedding",
+        if qwen_encoder is not None and siglip_encoder is not None:
+            # Multi-vector (Qwen 2048-d + SigLIP 768-d)
+            qwen_vectors = [frame.qwen_embedding or frame.embedding for frame in scene.keyframes]
+            if any(vector is None for vector in qwen_vectors):
+                images = [frame.image for frame in scene.keyframes]
+                qwen_vectors = []
+                for start in range(0, len(images), batch_size):
+                    qwen_vectors.extend(
+                        qwen_encoder.encode_images(images[start : start + batch_size])
+                    )
+            qwen_vec = _mean_normalized(qwen_vectors)
+
+            siglip_vectors = [frame.embedding for frame in scene.keyframes]
+            if any(vector is None for vector in siglip_vectors):
+                images = [frame.image for frame in scene.keyframes]
+                siglip_vectors = []
+                for start in range(0, len(images), batch_size):
+                    siglip_vectors.extend(
+                        siglip_encoder.encode_images(images[start : start + batch_size])
+                    )
+            siglip_vec = _mean_normalized(siglip_vectors)
+
+            output.append(
+                EmbeddingRecord(
+                    scene.scene_id,
+                    {"qwen": qwen_vec, "siglip": siglip_vec},
+                    model="qwen+siglip",
+                    version=version,
+                )
             )
-        output.append(EmbeddingRecord(scene.scene_id, vector, model, version))
+        else:
+            # Single-vector fallback
+            vectors = [frame.embedding for frame in scene.keyframes]
+            if any(vector is None for vector in vectors):
+                images = [frame.image for frame in scene.keyframes]
+                vectors = []
+                for start in range(0, len(images), batch_size):
+                    vectors.extend(
+                        primary_encoder.encode_images(images[start : start + batch_size])
+                    )
+            vector = _mean_normalized(vectors)
+            if len(vector) != expected_dimension:
+                raise EmbeddingError(
+                    f"Embedding dimension {len(vector)} does not match Qdrant dimension {expected_dimension}",
+                    stage="embedding",
+                )
+            output.append(EmbeddingRecord(scene.scene_id, vector, model, version))
+
     return output
 
 
-__all__ = ["embed_frames", "embed_scenes"]
+__all__ = ["embed_frames", "embed_frames_qwen", "embed_scenes"]

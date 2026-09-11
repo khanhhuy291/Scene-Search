@@ -9,7 +9,7 @@ from PIL import Image
 from pipelines.common.errors import EmbeddingError
 from pipelines.common.types import FrameRecord
 from pipelines.ingestion.deduplicator import DedupStats, filter_near_duplicates
-from pipelines.ingestion.embedder import embed_frames, embed_scenes
+from pipelines.ingestion.embedder import embed_frames, embed_frames_qwen, embed_scenes
 from pipelines.ingestion.indexer import build_scene_points
 from pipelines.ingestion.privacy_verifier import verified_frames
 from pipelines.ingestion.sampler import UniformFrameSampler
@@ -135,3 +135,61 @@ def test_scene_point_id_is_deterministic_and_payload_is_searchable() -> None:
         assert math.isclose(sum(value * value for value in first.vector), 1.0)
     finally:
         close_frames(source)
+
+
+def test_siglip_dedup_and_hybrid_qwen_siglip_scene_points() -> None:
+    class MockSiglipEncoder:
+        dimension = 768
+        model_version = "siglip-v1"
+
+        def encode_images(self, images):
+            return [[0.0] * 768 for _ in images]
+
+    class MockQwenEncoder:
+        dimension = 2048
+        model_version = "qwen-v1"
+
+        def encode_images(self, images):
+            return [[0.0] * 2048 for _ in images]
+
+    # Create 3 frames where first two are near-duplicates
+    f0 = frame(0, 0)
+    f1 = frame(100, 1)
+    f2 = frame(2000, 2)
+    source = [f0, f1, f2]
+
+    # Assign SigLIP vectors for dedup
+    f0.embedding = [1.0] + [0.0] * 767
+    f1.embedding = [1.0] + [0.0] * 767  # duplicate of f0
+    f2.embedding = [0.0, 1.0] + [0.0] * 766
+
+    retained = list(filter_near_duplicates(source, enabled=True, threshold=0.98))
+    assert len(retained) == 2
+    assert retained[0].timestamp_ms == 0
+    assert retained[1].timestamp_ms == 2000
+
+    embed_frames_qwen(retained, encoder=MockQwenEncoder(), batch_size=2)
+    assert retained[0].qwen_embedding is not None
+    assert len(retained[0].qwen_embedding) == 2048
+
+    scenes = build_scenes(retained, video_id=VIDEO_ID, pipeline_version="v1")
+    embeddings = embed_scenes(
+        scenes,
+        qwen_encoder=MockQwenEncoder(),
+        siglip_encoder=MockSiglipEncoder(),
+        expected_dimension=2048,
+    )
+    assert len(embeddings) == 1
+    assert isinstance(embeddings[0].vector, dict)
+    assert "qwen" in embeddings[0].vector
+    assert "siglip" in embeddings[0].vector
+    assert len(embeddings[0].vector["qwen"]) == 2048
+    assert len(embeddings[0].vector["siglip"]) == 768
+
+    points = build_scene_points(scenes, embeddings, dataset="test")
+    assert len(points) == 1
+    assert isinstance(points[0].vector, dict)
+    assert points[0].vector["qwen"] == embeddings[0].vector["qwen"]
+    assert points[0].vector["siglip"] == embeddings[0].vector["siglip"]
+    assert points[0].payload["scene_id"] == scenes[0].scene_id
+    assert points[0].payload["dataset"] == "test"

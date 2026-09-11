@@ -6,8 +6,6 @@ import {
   X,
   Send,
   Trash2,
-  ChevronDown,
-  ChevronUp,
   Search,
   Film,
   Clock,
@@ -19,23 +17,39 @@ import { sendChatMessageApi } from '../../api/chat'
 
 const QUICK_PROMPTS = [
   'Tìm xe buýt màu vàng rẽ trái lúc trời mưa',
-  'Cảnh người đi bộ qua đường vào ban đêm',
+  'Cảnh người đi bộ dắt chó trên vỉa hè',
   'Xe cảnh sát hoặc cứu thương bật đèn ưu tiên',
   'Xe tải dừng đỗ bên lề đường lúc hoàng hôn'
+]
+
+const COT_STAGES = [
+  { icon: '🧠', title: 'Bước 1/4: Phân tích & Lập Kế hoạch', desc: 'Dịch và chuẩn hóa câu hỏi sang English Visual Query...' },
+  { icon: '🔍', title: 'Bước 2/4: Truy xuất Vector Qdrant', desc: 'Tìm kiếm không gian vector embedding đa phương thức...' },
+  { icon: '📥', title: 'Bước 3/4: Nạp Khung hình HD', desc: 'Trích xuất keyframes độ nét cao (640px) từ storage...' },
+  { icon: '👁️', title: 'Bước 4/4: Kiểm tra Thị giác VLM', desc: 'Mô hình đang soi kỹ chi tiết từng ảnh (màu sắc áo, đặc điểm người, xe)...' }
 ]
 
 export const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false)
   const [input, setInput] = useState('')
-  const [limit, setLimit] = useState(3)
+  const [limit, setLimit] = useState(5)
   const [loading, setLoading] = useState(false)
+  const [cotStep, setCotStep] = useState(0)
   const [expandedReasoning, setExpandedReasoning] = useState({})
   const [selectedVideoScene, setSelectedVideoScene] = useState(null)
+
+  const attachToken = (url) => {
+    if (!url) return null
+    const token = localStorage.getItem('scenesearch_token')
+    if (!token) return url
+    return url.includes('?') ? `${url}&token=${token}` : `${url}?token=${token}`
+  }
+
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
       content:
-        'Xin chào! Tôi là Trợ lý AI Đa phương thức (VLM) cho hệ thống SceneSearch. Tôi có thể tự động phân tích câu hỏi, lặp và tinh chỉnh truy vấn (paraphrase), đọc ảnh keyframe và trả lời chi tiết kèm video cho bạn!',
+        'Xin chào! Tôi là Trợ lý AI Đa phương thức (VLM) cho hệ thống SceneSearch. Tôi có thể tự động phân tích câu hỏi, dịch truy vấn thị giác, soi ảnh keyframe sắc nét và trả lời chi tiết kèm video cho bạn!',
       sources: []
     }
   ])
@@ -43,6 +57,22 @@ export const ChatWidget = () => {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const videoRef = useRef(null)
+
+  // Live Chain of Thought progress animation during loading
+  useEffect(() => {
+    let interval = null
+    if (loading) {
+      setCotStep(0)
+      interval = setInterval(() => {
+        setCotStep((prev) => (prev < COT_STAGES.length - 1 ? prev + 1 : prev))
+      }, 2000)
+    } else {
+      setCotStep(0)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [loading])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -53,7 +83,7 @@ export const ChatWidget = () => {
       scrollToBottom()
       inputRef.current?.focus()
     }
-  }, [isOpen, messages, loading])
+  }, [isOpen, messages, loading, cotStep])
 
   // When video modal opens, seek to timestamp
   useEffect(() => {
@@ -150,13 +180,14 @@ export const ChatWidget = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setIsOpen(true)}
-            className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-mono font-black uppercase text-xs tracking-wider border-2 border-stone-950 dark:border-amber-400 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(251,191,36,1)] transition-all cursor-pointer"
+            className="fixed bottom-5 right-5 z-50 flex items-center gap-2 p-3 sm:px-4 sm:py-3 bg-amber-500 hover:bg-amber-400 text-stone-950 font-mono font-black uppercase text-xs tracking-wider border-2 border-stone-950 dark:border-amber-400 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(251,191,36,1)] transition-all cursor-pointer rounded-full sm:rounded-none"
+            aria-label="Open AI Chat Assistant"
           >
             <div className="relative flex items-center justify-center">
               <Bot className="w-5 h-5" />
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-stone-950 animate-pulse" />
             </div>
-            <span>[🤖 AI CHAT ASSISTANT]</span>
+            <span className="hidden sm:inline">[🤖 AI CHAT ASSISTANT]</span>
           </motion.button>
         )}
       </AnimatePresence>
@@ -169,7 +200,7 @@ export const ChatWidget = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 40, scale: 0.96 }}
             transition={{ duration: 0.2 }}
-            className="fixed bottom-6 right-6 z-50 w-[520px] max-w-[calc(100vw-2rem)] h-[720px] max-h-[calc(100vh-4rem)] flex flex-col bg-[#FAF7F2] dark:bg-[#181512] border-3 border-stone-950 dark:border-[#423b32] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(251,191,36,0.3)] font-sans overflow-hidden"
+            className="fixed bottom-2 right-2 left-2 sm:left-auto sm:bottom-6 sm:right-6 z-50 w-auto sm:w-[520px] max-w-full sm:max-w-[calc(100vw-2rem)] h-[85vh] sm:h-[720px] max-h-[calc(100vh-2rem)] flex flex-col bg-[#FAF7F2] dark:bg-[#181512] border-3 border-stone-950 dark:border-[#423b32] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(251,191,36,0.3)] font-sans overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 bg-stone-900 text-white border-b-2 border-stone-950 dark:border-[#423b32]">
@@ -248,25 +279,24 @@ export const ChatWidget = () => {
                         </div>
                       )}
 
-                      {/* Reasoning Trace Accordion */}
+                      {/* Reasoning Trace Accordion (Chain of Thought Toggle) */}
                       {hasReasoning && (
-                        <div className="mb-3 border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-900/60">
+                        <div className="mb-3 border-2 border-amber-400/80 dark:border-amber-600/80 bg-amber-50/70 dark:bg-stone-900/90 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                           <button
+                            type="button"
                             onClick={() => toggleReasoning(idx)}
-                            className="w-full px-2.5 py-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                            className="w-full px-3 py-2 flex items-center justify-between text-[11px] font-mono font-black uppercase tracking-wider text-amber-950 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
                           >
-                            <span className="flex items-center gap-1.5">
-                              <Sparkles className="w-3 h-3 text-amber-500" />
-                              Quá trình suy luận (Reasoning CoT)
+                            <span className="flex items-center gap-2">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 animate-pulse" />
+                              <span>{isReasoningOpen ? '▼ ẨN CHAIN OF THOUGHT (SUY LUẬN AI)' : '▶ BẤM XEM CHAIN OF THOUGHT (SUY LUẬN AI)'}</span>
                             </span>
-                            {isReasoningOpen ? (
-                              <ChevronUp className="w-3 h-3" />
-                            ) : (
-                              <ChevronDown className="w-3 h-3" />
-                            )}
+                            <span className="text-[9px] px-1.5 py-0.5 bg-amber-200 dark:bg-amber-950 border border-stone-950 dark:border-amber-400 font-bold">
+                              {isReasoningOpen ? 'THU GỌN ▲' : 'XEM ▼'}
+                            </span>
                           </button>
                           {isReasoningOpen && (
-                            <div className="p-2.5 text-[10px] text-stone-600 dark:text-stone-400 font-mono whitespace-pre-wrap border-t border-stone-200 dark:border-stone-800 max-h-48 overflow-y-auto">
+                            <div className="p-3 text-[11px] text-stone-800 dark:text-stone-300 font-mono whitespace-pre-wrap border-t-2 border-amber-300 dark:border-stone-800 max-h-52 overflow-y-auto leading-relaxed bg-white/90 dark:bg-black/40">
                               {msg.reasoning}
                             </div>
                           )}
@@ -301,7 +331,7 @@ export const ChatWidget = () => {
                                 <div className="relative w-24 h-16 bg-stone-950 border border-stone-400 dark:border-stone-700 flex-shrink-0 overflow-hidden flex items-center justify-center">
                                   {src.preview_url ? (
                                     <img
-                                      src={src.preview_url}
+                                      src={attachToken(src.preview_url)}
                                       alt={`Scene ${sIdx + 1}`}
                                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                                       onError={(e) => {
@@ -346,17 +376,46 @@ export const ChatWidget = () => {
                 )
               })}
 
-              {/* Loading Indicator */}
+              {/* Live Chain-of-Thought (CoT) Progress Indicator */}
               {loading && (
-                <div className="flex flex-col items-start space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-stone-500">
-                    🤖 Nemotron Agent
-                  </span>
-                  <div className="p-3 bg-white dark:bg-[#201c18] border-2 border-stone-950 dark:border-[#423b32] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] flex items-center gap-2">
-                    <div className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                    <span className="text-xs text-stone-600 dark:text-stone-300 font-mono">
-                      Đang tìm kiếm, tinh chỉnh truy vấn & đọc ảnh...
-                    </span>
+                <div className="flex flex-col items-start space-y-1.5 w-full">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400">
+                    <Sparkles className="w-3 h-3 text-amber-500 animate-spin" />
+                    <span>🧠 AI AGENT CHAIN-OF-THOUGHT (LIVE TRACE)</span>
+                  </div>
+                  <div className="w-full p-3.5 bg-white dark:bg-[#201c18] border-2 border-stone-950 dark:border-amber-400/60 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(251,191,36,0.3)] space-y-2">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-stone-200 dark:border-stone-700 text-[10px] font-mono">
+                      <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block" />
+                        {COT_STAGES[cotStep].title}
+                      </span>
+                      <span className="text-stone-400 font-bold">{cotStep + 1}/4</span>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      <div className="text-xl flex-shrink-0 animate-bounce">
+                        {COT_STAGES[cotStep].icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-stone-900 dark:text-stone-100 font-sans font-medium">
+                          {COT_STAGES[cotStep].desc}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Step progress dots */}
+                    <div className="grid grid-cols-4 gap-1.5 pt-1">
+                      {COT_STAGES.map((s, sIdx) => (
+                        <div
+                          key={sIdx}
+                          className={`h-1.5 rounded-sm transition-all duration-300 ${
+                            sIdx <= cotStep
+                              ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]'
+                              : 'bg-stone-200 dark:bg-stone-800'
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -396,9 +455,10 @@ export const ChatWidget = () => {
                     onChange={(e) => setLimit(e.target.value)}
                     className="bg-white dark:bg-stone-800 text-stone-900 dark:text-white border border-stone-300 dark:border-stone-700 px-1 py-0.5 text-[10px] font-bold"
                   >
-                    <option value={2}>2 cảnh</option>
                     <option value={3}>3 cảnh</option>
-                    <option value={5}>5 cảnh</option>
+                    <option value={5}>5 cảnh (khuyên dùng)</option>
+                    <option value={8}>8 cảnh</option>
+                    <option value={10}>10 cảnh (tối đa)</option>
                   </select>
                 </div>
               </div>
@@ -455,17 +515,26 @@ export const ChatWidget = () => {
               <div className="relative w-full bg-black aspect-video flex items-center justify-center overflow-hidden">
                 {selectedVideoScene.clip_url ? (
                   <video
+                    key={selectedVideoScene.point_id || selectedVideoScene.video_id}
                     ref={videoRef}
-                    src={selectedVideoScene.clip_url}
+                    src={attachToken(selectedVideoScene.clip_url)}
+                    poster={attachToken(selectedVideoScene.preview_url) || undefined}
                     controls
                     autoPlay
-                    className="w-full h-full object-contain"
+                    preload="auto"
+                    playsInline
+                    onLoadedMetadata={(e) => {
+                      if (selectedVideoScene?.timestamp_s) {
+                        e.target.currentTime = Math.max(0, selectedVideoScene.timestamp_s - 0.5)
+                      }
+                    }}
+                    className="w-full h-full object-contain bg-black"
                   >
                     Trình duyệt không hỗ trợ thẻ video.
                   </video>
                 ) : selectedVideoScene.preview_url ? (
                   <img
-                    src={selectedVideoScene.preview_url}
+                    src={attachToken(selectedVideoScene.preview_url)}
                     alt="Preview"
                     className="w-full h-full object-contain"
                   />

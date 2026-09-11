@@ -84,8 +84,8 @@ def test_restricted_store_refuses_even_a_derived_looking_key(
 def test_derived_store_signs_normally(storages: tuple[MinIOStorage, MinIOStorage]) -> None:
     _, derived = storages
     url = derived.get_presigned_url("thumbnails/frame.jpg")
-    assert "scenesearch-derived" in url
-    assert derived.client.signed == [("scenesearch-derived", "thumbnails/frame.jpg")]
+    assert derived.bucket in url
+    assert derived.client.signed == [(derived.bucket, "thumbnails/frame.jpg")]
 
 
 def test_derived_store_uses_the_configured_ttl(

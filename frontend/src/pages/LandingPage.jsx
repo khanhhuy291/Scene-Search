@@ -7,7 +7,6 @@ import {
   ArrowUpRight,
   Cpu,
   Database,
-  Layers,
   ShieldCheck,
   Download,
   FileJson,
@@ -16,9 +15,15 @@ import {
   ExternalLink,
   TrendingDown,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Sun,
+  Moon,
+  Menu,
+  X,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
+import { useLanguage } from '../context/LanguageContext'
 import { useToast } from '../context/ToastContext'
 import { BrutalistAuthModal } from '../components/auth/BrutalistAuthModal'
 import { ProfileModal } from '../components/auth/ProfileModal'
@@ -69,73 +74,73 @@ const GALLERY_ITEMS = [
   {
     id: 'g1',
     category: 'AUTONOMOUS DRIVING',
-    title: 'Windshield Dashcam on Mountain Pass Curve',
+    title: 'Windshield Dashcam on Mountain Curve',
     timestamp: '00:42:15',
     frame: 1267,
     promptEn: 'Car windshield view on winding forest road with clear center lane markings',
     promptVi: 'Góc nhìn kính lái đường đèo quanh co qua rừng cây, vạch kẻ đường màu vàng rõ nét',
     tags: ['LANE DETECTION', 'WINDSHIELD POV', 'MOUNTAIN CURVE'],
-    img: '/screen/cristofer-maximilian-qI4Nh4t3x90-unsplash.jpg',
+    img: '/screen/dashcam-mountain-curve.jpg',
     similarity: '98.6%'
   },
   {
     id: 'g2',
     category: 'HIGHWAY & EXPRESSWAY',
-    title: 'Aerial Multi-Lane Expressway Traffic Flow',
+    title: 'Multi-Lane Expressway Traffic Flow',
     timestamp: '01:18:40',
     frame: 2360,
-    promptEn: 'Top-down aerial view of multi-lane expressway with moving vehicles and lane markings',
-    promptVi: 'Góc quay flycam từ trên cao đường cao tốc nhiều làn xe và dải phân cách cây xanh',
-    tags: ['OVERHEAD VIEW', 'TRAFFIC DENSITY', 'VEHICLE COUNT'],
-    img: '/screen/chuttersnap-d271d_SOGR8-unsplash.jpg',
+    promptEn: 'Front windshield dashcam view of congested multi-lane highway with lane dividers',
+    promptVi: 'Góc nhìn kính lái trên cao tốc đông đúc nhiều làn xe với biển chỉ dẫn và xe phía trước',
+    tags: ['HIGHWAY TRAFFIC', 'VEHICLE TRACKING', 'LANE MARKINGS'],
+    img: '/screen/dashcam-highway-traffic.jpg',
     similarity: '97.4%'
   },
   {
     id: 'g3',
     category: 'URBAN INTERSECTION',
-    title: 'Metropolis Highway Interchange Light Trails',
+    title: 'Rainy Night Urban Intersection & Pedestrians',
     timestamp: '02:05:12',
     frame: 3678,
-    promptEn: 'Night highway interchange leading to city skyline with long exposure light trails',
-    promptVi: 'Nút giao cao tốc ban đêm dẫn vào trung tâm thành phố với dải vệt sáng đèn xe',
-    tags: ['LIGHT TRAILS', 'URBAN INTERCHANGE', 'NIGHT'],
-    img: '/screen/joey-kyber-45FJgZMXCK8-unsplash.jpg',
+    promptEn: 'Nighttime city crossroad dashcam in rain with glowing red traffic light and crosswalk',
+    promptVi: 'Kính lái ô tô ban đêm trời mưa tại ngã tư thành phố với đèn đỏ và người đi bộ qua đường',
+    tags: ['NIGHT DRIVING', 'RAIN REFLECTIONS', 'TRAFFIC LIGHT'],
+    img: '/screen/dashcam-urban-rain.jpg',
     similarity: '99.1%'
   },
   {
     id: 'g4',
     category: 'AUTONOMOUS DRIVING',
-    title: 'Alpine Highway Drive with Digital Instrument Cluster',
+    title: 'Autonomous Cockpit with 3D Perception HUD',
     timestamp: '00:15:30',
     frame: 465,
-    promptEn: 'Driver perspective on sunny highway with digital speedometer dashboard',
-    promptVi: 'Góc lái xe cao tốc trời nắng với màn hình đồng hồ tốc độ kỹ thuật số',
-    tags: ['DASHBOARD HUD', 'DAYLIGHT DRIVE', 'CLEAR SKY'],
-    img: '/screen/anna-IhodRjsOf4E-unsplash.jpg',
+    promptEn: 'Self-driving vehicle cockpit view with 3D perception bounding boxes and lane trajectory',
+    promptVi: 'Khoang lái xe tự hành hiện đại với màn hình HUD hiển thị hộp nhận diện 3D và quỹ đạo xe',
+    tags: ['AUTONOMOUS HUD', '3D BOUNDING BOX', 'LANE GUIDANCE'],
+    img: '/screen/dashcam-cockpit-hud.jpg',
     similarity: '96.8%'
   },
   {
     id: 'g5',
     category: 'HIGHWAY & EXPRESSWAY',
-    title: 'Sunset Expressway Headlight & Taillight Stream',
+    title: 'Sunset Highway Behind Commercial Semi-Truck',
     timestamp: '01:04:22',
     frame: 1930,
-    promptEn: 'Expressway at dusk with dense vehicle headlight streams stretching into the horizon',
-    promptVi: 'Đường cao tốc lúc chập tối với dòng đèn xe sáng rực kéo dài về phía chân trời',
-    tags: ['VEHICLE STREAM', 'TWILIGHT', 'EXPRESSWAY'],
-    img: '/screen/farhood-amni-iIVLgiCR1-I-unsplash.jpg',
+    promptEn: 'Forward dashcam view following a large cargo semi-truck on expressway during sunset',
+    promptVi: 'Góc nhìn kính lái bám theo xe tải container trên đường cao tốc lúc hoàng hôn vàng rực',
+    tags: ['TRUCK FOLLOWING', 'GOLDEN SUNSET', 'EXPRESSWAY'],
+    img: '/screen/dashcam-sunset-truck.jpg',
     similarity: '98.1%'
   },
   {
     id: 'g6',
-    category: 'AUTONOMOUS DRIVING',
-    title: 'Scenic Mountain Canyon Road Trip POV',
+    category: 'URBAN INTERSECTION',
+    title: 'Downtown Boulevard with Cyclist & Crosswalk',
     timestamp: '03:12:08',
     frame: 5764,
-    promptEn: 'Cockpit view driving through mountain canyon pass in bright daylight',
-    promptVi: 'Khoang lái xe ô tô di chuyển qua hẻm núi đèo hùng vĩ ban ngày',
-    tags: ['COCKPIT POV', 'MOUNTAIN PASS', 'DAYLIGHT'],
-    img: '/screen/austin-neill-fLHjTTLURYg-unsplash.jpg',
+    promptEn: 'Daytime city boulevard dashcam view with commuter cyclist in bike lane and pedestrians',
+    promptVi: 'Kính lái ô tô ban ngày trên đại lộ thành phố với người đi xe đạp trong làn xanh và người qua đường',
+    tags: ['CYCLIST TRACKING', 'PEDESTRIAN CROSSWALK', 'URBAN BOULEVARD'],
+    img: '/screen/dashcam-city-cyclists.jpg',
     similarity: '97.9%'
   }
 ]
@@ -422,12 +427,15 @@ export function LandingPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { user, isAuthenticated, logout } = useAuth()
   const { addToast } = useToast()
+  const { toggleTheme, isDark } = useTheme()
+  const { language, setLanguage, isVietnamese } = useLanguage()
   const [searchQuery, setSearchQuery] = useState('')
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [authMode, setAuthMode] = useState('login')
   const [galleryCategory, setGalleryCategory] = useState('ALL')
   const [showJsonlModal, setShowJsonlModal] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const searchInputRef = useRef(null)
 
   // Handle URL query trigger (?mode=login / ?mode=register / ?auth=login)
@@ -475,6 +483,10 @@ export function LandingPage() {
 
   const handleSearchSubmit = (e) => {
     e?.preventDefault()
+    if (!isAuthenticated) {
+      openAuth('login')
+      return
+    }
     if (searchQuery.trim()) {
       navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
     } else {
@@ -483,6 +495,10 @@ export function LandingPage() {
   }
 
   const handleHeroSampleClick = (prompt) => {
+    if (!isAuthenticated) {
+      openAuth('login')
+      return
+    }
     navigate(`/search?q=${encodeURIComponent(prompt)}`)
   }
 
@@ -517,30 +533,36 @@ export function LandingPage() {
           </Link>
 
           {/* Monospaced Nav Links - Shown on desktop lg/xl */}
-          <nav className="hidden xl:flex items-center gap-6 text-xs font-black uppercase tracking-wider">
+          <nav className="hidden xl:flex items-center gap-6 text-xs font-bold uppercase tracking-normal">
             <a
               href="#index-section"
               className="hover:text-[#FF5500] hover:underline decoration-2 underline-offset-4 cursor-pointer"
             >
-              INDEX
+              {isVietnamese ? "MỤC LỤC" : "INDEX"}
+            </a>
+            <a
+              href="#negation-section"
+              className="hover:text-[#FF5500] hover:underline decoration-2 underline-offset-4 cursor-pointer"
+            >
+              {isVietnamese ? "PHỦ ĐỊNH" : "NEGATION"}
             </a>
             <a
               href="#architecture-section"
               className="hover:text-[#FF5500] hover:underline decoration-2 underline-offset-4 cursor-pointer"
             >
-              ARCHITECTURE
+              {isVietnamese ? "KIẾN TRÚC" : "ARCHITECTURE"}
             </a>
             <a
               href="#gallery-section"
               className="hover:text-[#FF5500] hover:underline decoration-2 underline-offset-4 cursor-pointer"
             >
-              GALLERY
+              {isVietnamese ? "THƯ VIỆN" : "GALLERY"}
             </a>
             <a
               href="#datasets-section"
               className="hover:text-[#FF5500] hover:underline decoration-2 underline-offset-4 cursor-pointer"
             >
-              DATASETS
+              {isVietnamese ? "TẬP DỮ LIỆU" : "DATASETS"}
             </a>
             <a
               href="#benchmarks-section"
@@ -548,16 +570,86 @@ export function LandingPage() {
             >
               BENCHMARKS
             </a>
-            <Link
-              to="/search"
-              className="hover:text-[#FF5500] hover:underline decoration-2 underline-offset-4 flex items-center gap-1"
-            >
-              LIVE ENGINE
-            </Link>
+            {isAuthenticated ? (
+              <Link
+                to="/search"
+                className="hover:text-[#FF5500] hover:underline decoration-2 underline-offset-4 flex items-center gap-1"
+              >
+                {isVietnamese ? "CÔNG CỤ LIVE" : "LIVE ENGINE"}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openAuth("login")}
+                className="hover:text-[#FF5500] hover:underline decoration-2 underline-offset-4 flex items-center gap-1 cursor-pointer"
+              >
+                {isVietnamese ? "CÔNG CỤ LIVE" : "LIVE ENGINE"}
+              </button>
+            )}
           </nav>
 
-          {/* Auth Action Buttons */}
+          {/* Controls: Language Toggle & Theme Mode Toggle */}
           <div className="flex items-center gap-3">
+            {/* Language Toggle (EN / VI) */}
+            <div className="flex items-center border-2 border-black font-mono text-xs font-black shadow-[2px_2px_0px_0px_#000] bg-white dark:bg-stone-900">
+              <button
+                type="button"
+                onClick={() => {
+                  if (language !== "en") {
+                    setLanguage("en")
+                    addToast("Switched language to English", "info")
+                  }
+                }}
+                className={`px-2 py-1 transition-colors cursor-pointer ${
+                  language === "en"
+                    ? "bg-black text-white dark:bg-[#FF5500] dark:text-black"
+                    : "text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
+                }`}
+                title="Switch to English"
+                aria-label="Switch to English"
+              >
+                EN
+              </button>
+              <div className="w-[1.5px] h-3.5 bg-black/40 dark:bg-stone-700" />
+              <button
+                type="button"
+                onClick={() => {
+                  if (language !== "vi") {
+                    setLanguage("vi")
+                    addToast("Đã chuyển ngôn ngữ sang Tiếng Việt", "info")
+                  }
+                }}
+                className={`px-2 py-1 transition-colors cursor-pointer ${
+                  language === "vi"
+                    ? "bg-black text-white dark:bg-[#FF5500] dark:text-black"
+                    : "text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
+                }`}
+                title="Chuyển sang Tiếng Việt"
+                aria-label="Switch to Vietnamese"
+              >
+                VI
+              </button>
+            </div>
+
+            {/* Theme Mode Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                toggleTheme()
+                addToast(isDark ? "Switched to Light Mode" : "Switched to Dark Mode", "info")
+              }}
+              className="p-2 bg-white dark:bg-stone-900 border-2 border-black text-black dark:text-white hover:bg-[#FF5500] hover:text-black dark:hover:bg-[#FF5500] dark:hover:text-black shadow-[2px_2px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
+              title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              aria-label="Toggle Theme Mode"
+            >
+              {isDark ? (
+                <Sun className="w-4 h-4 text-amber-300" />
+              ) : (
+                <Moon className="w-4 h-4 text-black" />
+              )}
+            </button>
+
+            {/* Auth Action Buttons */}
             {isAuthenticated && user ? (
               <div className="flex items-center gap-2">
                 <span
@@ -582,7 +674,7 @@ export function LandingPage() {
                   to={user.role === 'admin' ? '/ingest' : '/search'}
                   className="px-4 py-2 bg-black hover:bg-[#FF5500] text-white hover:text-black font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[3px_3px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center gap-1.5"
                 >
-                  <span>WORKSPACE</span>
+                  <span>{isVietnamese ? "KHÔNG GIAN LÀM VIỆC" : "WORKSPACE"}</span>
                   <ArrowUpRight className="w-3.5 h-3.5" />
                 </Link>
 
@@ -612,13 +704,78 @@ export function LandingPage() {
                   onClick={() => openAuth('register')}
                   className="px-5 py-2 bg-black hover:bg-[#FF5500] text-white hover:text-black font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[3px_3px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  <span>SIGN UP</span>
+                  <span>{isVietnamese ? "ĐĂNG KÝ" : "SIGN UP"}</span>
                   <ArrowUpRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
+
+            {/* Mobile Hamburger Button */}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="xl:hidden p-2 bg-white dark:bg-stone-800 border-2 border-black text-black dark:text-white cursor-pointer ml-1"
+              aria-label="Toggle Navigation Menu"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Drawer */}
+        {mobileMenuOpen && (
+          <div className="xl:hidden border-t-2 border-black bg-[#F7F4EE] dark:bg-[#141210] p-4 space-y-2 font-mono text-xs font-black uppercase shadow-[0_4px_6px_rgba(0,0,0,0.1)]">
+            <a
+              href="#index-section"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 bg-white dark:bg-stone-900 border border-black hover:bg-[#FF5500] hover:text-black transition-colors"
+            >
+              {isVietnamese ? "MỤC LỤC" : "INDEX"}
+            </a>
+            <a
+              href="#negation-section"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 bg-white dark:bg-stone-900 border border-black hover:bg-[#FF5500] hover:text-black transition-colors"
+            >
+              {isVietnamese ? "PHỦ ĐỊNH LOGIC (SHOWCASE)" : "NEGATION SHOWCASE"}
+            </a>
+            <a
+              href="#architecture-section"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 bg-white dark:bg-stone-900 border border-black hover:bg-[#FF5500] hover:text-black transition-colors"
+            >
+              {isVietnamese ? "KIẾN TRÚC HỆ THỐNG" : "ARCHITECTURE"}
+            </a>
+            <a
+              href="#gallery-section"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 bg-white dark:bg-stone-900 border border-black hover:bg-[#FF5500] hover:text-black transition-colors"
+            >
+              {isVietnamese ? "THƯ VIỆN VIDEO" : "GALLERY"}
+            </a>
+            <a
+              href="#datasets-section"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 bg-white dark:bg-stone-900 border border-black hover:bg-[#FF5500] hover:text-black transition-colors"
+            >
+              {isVietnamese ? "TẬP DỮ LIỆU" : "DATASETS"}
+            </a>
+            <a
+              href="#benchmarks-section"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 bg-white dark:bg-stone-900 border border-black hover:bg-[#FF5500] hover:text-black transition-colors"
+            >
+              BENCHMARKS
+            </a>
+            <Link
+              to="/search"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 bg-[#FF5500] text-black border border-black hover:bg-black hover:text-white transition-colors"
+            >
+              {isVietnamese ? "MỞ KHÔNG GIAN LÀM VIỆC →" : "OPEN WORKSPACE →"}
+            </Link>
+          </div>
+        )}
       </header>
 
       {/* 2. Hero Section */}
@@ -665,7 +822,7 @@ export function LandingPage() {
                 <span>MULTIMODAL NEURAL DISCOVERY ENGINE</span>
               </div>
 
-              <h1 className="text-5xl sm:text-7xl xl:text-8xl font-black uppercase tracking-tight leading-[0.92] text-black dark:text-white">
+              <h1 className="text-4xl sm:text-6xl xl:text-7xl font-black uppercase tracking-tight leading-[1.05] sm:leading-[0.98] text-black dark:text-white">
                 SEARCH <br />
                 <span className="text-[#FF5500] border-b-4 border-black dark:border-white inline-block pb-1">
                   BEAUTIFULLY.
@@ -675,8 +832,12 @@ export function LandingPage() {
             </div>
 
             {/* Supporting Paragraph */}
-            <p className="relative z-10 text-stone-700 dark:text-stone-300 text-base sm:text-lg font-sans max-w-2xl leading-relaxed font-medium">
-              Zero-shot multimodal search across millions of video keyframes. Query visual layers, temporal actions, and strict negations like <span className="font-mono font-bold bg-white dark:bg-stone-800 px-1.5 py-0.5 border border-black text-black dark:text-white">“rainy night without people”</span> with sub-10ms neural embeddings.
+            <p className="relative z-10 text-stone-700 dark:text-stone-300 text-sm sm:text-base font-sans max-w-2xl leading-relaxed font-normal sm:font-medium">
+              {isVietnamese ? (
+                <>Tìm kiếm đa phương thức zero-shot trên hàng triệu keyframe video. Truy vấn theo lớp thị giác, hành vi chuyển động và phủ định logic như <span className="font-mono font-bold bg-white dark:bg-stone-800 px-1.5 py-0.5 border border-black text-black dark:text-white">“đêm mưa không có người”</span> với vector nhúng dưới 10ms.</>
+              ) : (
+                <>Zero-shot multimodal search across millions of video keyframes. Query visual layers, temporal actions, and strict negations like <span className="font-mono font-bold bg-white dark:bg-stone-800 px-1.5 py-0.5 border border-black text-black dark:text-white">“rainy night without people”</span> with sub-10ms neural embeddings.</>
+              )}
             </p>
 
             {/* Integrated Hero Search Input Pill */}
@@ -694,15 +855,15 @@ export function LandingPage() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="SEARCH ANYTHING — WEATHER, OBJECTS, ACTIONS, SCENES..."
-                  className="w-full bg-transparent text-black dark:text-white placeholder:text-stone-400 font-mono text-xs sm:text-sm font-black uppercase outline-none border-none focus:ring-0"
+                  placeholder={isVietnamese ? "Tìm kiếm bất kỳ cảnh nào (VD: \"đêm mưa không có người\")..." : "SEARCH ANYTHING (E.G. \"RAINY NIGHT WITHOUT PEOPLE\")..."}
+                  className="w-full bg-transparent text-black dark:text-white placeholder:text-stone-400 font-sans text-xs sm:text-sm font-semibold outline-none border-none focus:ring-0"
                 />
 
                 <button
                   type="submit"
                   className="px-5 py-2.5 bg-black hover:bg-[#FF5500] text-white hover:text-black font-mono text-xs font-black uppercase tracking-wider border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)] active:translate-x-0.5 active:translate-y-0.5 transition-all shrink-0 flex items-center gap-1.5 cursor-pointer"
                 >
-                  <span>SEARCH</span>
+                  <span>{isVietnamese ? "TÌM KIẾM" : "SEARCH"}</span>
                   <kbd className="hidden sm:inline-block px-1.5 py-0.5 bg-stone-800 text-stone-200 border border-stone-600 text-[9px] font-mono">
                     ⌘ /
                   </kbd>
@@ -712,20 +873,27 @@ export function LandingPage() {
               {/* Quick Prompt Presets directly below search */}
               <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
                 <span className="text-stone-500 font-bold uppercase tracking-wider text-[10px]">
-                  INSTANT PROMPTS:
+                  {isVietnamese ? "GỢI Ý NHANH:" : "INSTANT PROMPTS:"}
                 </span>
-                {[
-                  'Rainy day without people',
-                  'Snowy intersection at night',
-                  'trời mưa, không có người đi bộ'
-                ].map((sample) => (
+                {(isVietnamese
+                  ? [
+                      "đường mưa không có người đi bộ",
+                      "lái xe trong hầm ban đêm",
+                      "cao tốc sương mù lúc hoàng hôn"
+                    ]
+                  : [
+                      "Rainy day without people",
+                      "Snowy intersection at night",
+                      "Driving through a tunnel at night"
+                    ]
+                ).map((sample) => (
                   <button
                     key={sample}
                     type="button"
                     onClick={() => handleHeroSampleClick(sample)}
-                    className="px-3 py-1 bg-white dark:bg-stone-800 hover:bg-black hover:text-white text-black dark:text-white border-2 border-black font-bold uppercase shadow-[2px_2px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer text-[11px]"
+                    className="px-2.5 py-1 bg-white dark:bg-stone-800 hover:bg-black hover:text-white text-black dark:text-white border-2 border-black font-sans font-medium normal-case shadow-[1.5px_1.5px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all cursor-pointer text-[11px]"
                   >
-                    "{sample}"
+                    “{sample}”
                   </button>
                 ))}
               </div>
@@ -800,7 +968,7 @@ export function LandingPage() {
             <span className="px-2.5 py-0.5 bg-[#FF5500] text-black text-[10px] font-black uppercase border border-black shadow-[1.5px_1.5px_0px_0px_#000]">
               [SECTION 01 // NEURAL INDEX]
             </span>
-            <h2 className="text-3xl sm:text-5xl font-black uppercase tracking-tight text-black dark:text-white">
+            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black uppercase tracking-tight leading-tight text-black dark:text-white">
               VECTOR INGESTION ARCHITECTURE
             </h2>
             <p className="text-xs text-stone-600 dark:text-stone-400 max-w-2xl font-sans">
@@ -887,25 +1055,121 @@ export function LandingPage() {
           ))}
         </div>
 
-        {/* Live Index Telemetry Counters */}
+        {/* Live Index Telemetry Counters with accurate units */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
           {[
-            ['INDEXED VECTORS', '1,480,290+', Database, '#FF5500'],
-            ['CURATED KEYFRAMES', '12,480 CLIPS', Layers, '#00D084'],
-            ['P50 SEARCH LATENCY', '8.4 MS', Clock, '#FFD700'],
-            ['PRIVACY BOUNDARY', '99.8% VERIFIED', ShieldCheck, '#7C3AED']
-          ].map(([label, value, Icon, color]) => (
+            [isVietnamese ? "VECTOR ĐÃ INDEX" : "INDEXED VECTORS", "~30,000", Database, "#FF5500", isVietnamese ? "Tập con 20 GB BDD-100K" : "20 GB BDD-100K subset"],
+            [isVietnamese ? "TÌM VECTOR (P50)" : "VECTOR LOOKUP (P50)", "8.4 MS", Clock, "#FFD700", isVietnamese ? "Qdrant HNSW máy chủ" : "Qdrant HNSW server-side"],
+            [isVietnamese ? "TÌM KIẾM TOÀN TRÌNH" : "END-TO-END SEARCH", "0.2–2.5 S", Clock, "#00D084", isVietnamese ? "Toàn chu trình neural pipeline" : "Observed full neural pipeline"],
+            [isVietnamese ? "ĐÁNH GIÁ THỰC NGHIỆM" : "GROUND TRUTH EVAL", "88 PAIRS", ShieldCheck, "#7C3AED", isVietnamese ? "Bộ testset đối sánh song ngữ" : "Bilingual golden testset"]
+          ].map(([label, value, Icon, color, sub]) => (
             <div
               key={label}
-              className="p-6 bg-white dark:bg-[#1C1A17] border-3 border-black shadow-[4px_4px_0px_0px_#000] space-y-2"
+              className="p-5 bg-white dark:bg-[#1C1A17] border-3 border-black shadow-[4px_4px_0px_0px_#000] space-y-1.5"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase text-stone-500">{label}</span>
                 <Icon className="w-4 h-4" style={{ color }} />
               </div>
-              <p className="text-3xl font-black text-black dark:text-white tracking-tight">{value}</p>
+              <p className="text-2xl sm:text-3xl font-black text-black dark:text-white tracking-tight">{value}</p>
+              <p className="text-[10px] text-stone-500 dark:text-stone-400 font-sans">{sub}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ========================================================= */}
+      {/* SECTION // NEGATION SHOWCASE (CORE DIFFERENTIATOR) */}
+      {/* ========================================================= */}
+      <section
+        id="negation-section"
+        className="max-w-[1700px] mx-auto px-4 sm:px-8 py-16 border-t-3 border-black space-y-8 font-mono"
+      >
+        <div className="space-y-2 max-w-3xl">
+          <span className="px-2.5 py-0.5 bg-[#FF5500] text-black text-[10px] font-black uppercase border border-black shadow-[1.5px_1.5px_0px_0px_#000]">
+            {isVietnamese ? "[ĐIỂM NỔI BẬT // RÀNG BUỘC PHỦ ĐỊNH LOGIC]" : "[CORE DIFFERENTIATOR // NEGATIVE CONSTRAINTS]"}
+          </span>
+          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black uppercase tracking-tight leading-tight text-black dark:text-white">
+            {isVietnamese ? (
+              <>PHẦN LỚN ENGINE TÌM ĐƯỢC MƯA. <span className="text-[#FF5500]">RẤT ÍT NƠI TÌM ĐƯỢC KHÔNG NGƯỜI ĐI BỘ.</span></>
+            ) : (
+              <>MOST ENGINES FIND RAIN. <span className="text-[#FF5500]">FEW CAN FIND NO PEDESTRIANS.</span></>
+            )}
+          </h2>
+          <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 font-sans leading-relaxed font-normal">
+            {isVietnamese ? (
+              "Các đội xe tự hành không thiếu video lái xe — họ thiếu dữ liệu được tuyển chọn cân bằng cho các tình huống biên (edge-cases). Một mô hình huấn luyện thời tiết xấu cần những con đường mưa hoàn toàn vắng bóng người. SceneSearch đánh giá loại trừ ở từng keyframe thay vì vứt bỏ cả clip 30 giây."
+            ) : (
+              "Perception teams do not lack driving video — they lack curated, balanced data of rare edge-cases. A model training for adverse weather needs rainy streets that are empty. SceneSearch evaluates exclusions per keyframe rather than discarding entire 30-second clips."
+            )}
+          </p>
+        </div>
+
+        {/* Side-by-side Comparative Panels */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Query A: Positive */}
+          <div className="p-5 bg-white dark:bg-[#1A1815] border-2 border-black dark:border-[#2E2A25] shadow-[4px_4px_0px_0px_#000] space-y-3 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase text-stone-500">QUERY WITHOUT EXCLUSION</span>
+                <span className="px-2 py-0.5 bg-stone-200 dark:bg-stone-800 text-[10px] font-bold">STANDARD SEARCH</span>
+              </div>
+              <h3 className="text-sm font-bold text-black dark:text-white">
+                “rainy street with pedestrians”
+              </h3>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="px-2 py-0.5 bg-[#00D084]/20 text-emerald-800 dark:text-emerald-300 border border-[#00D084] text-[10px] font-bold uppercase">
+                  ✓ must have · rain
+                </span>
+                <span className="px-2 py-0.5 bg-[#00D084]/20 text-emerald-800 dark:text-emerald-300 border border-[#00D084] text-[10px] font-bold uppercase">
+                  ✓ must have · pedestrian
+                </span>
+              </div>
+              <p className="text-xs font-sans text-stone-600 dark:text-stone-400 pt-1">
+                Retrieves dense urban scenes with foot traffic, umbrellas, and crosswalk movement during rain.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleHeroSampleClick('rainy street with pedestrians')}
+              className="w-full py-2 bg-[#F7F4EE] dark:bg-stone-800 hover:bg-black hover:text-white dark:hover:bg-[#FF5500] dark:hover:text-black text-black dark:text-white text-xs font-black uppercase border border-black transition-all flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span>{isVietnamese ? "THỬ TRONG WORKSPACE" : "TEST IN WORKSPACE"}</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Query B: Negative (The Differentiator) */}
+          <div className="p-5 bg-white dark:bg-[#1A1815] border-2 border-[#FF5500] shadow-[4px_4px_0px_0px_#FF5500] space-y-3 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase text-[#FF5500]">STRICT LOGICAL NEGATION</span>
+                <span className="px-2 py-0.5 bg-[#FF5500] text-black text-[10px] font-black uppercase">CURATION READY</span>
+              </div>
+              <h3 className="text-sm font-bold text-black dark:text-white">
+                “rainy street <span className="text-[#FF5500]">without pedestrians</span>”
+              </h3>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="px-2 py-0.5 bg-[#00D084]/20 text-emerald-800 dark:text-emerald-300 border border-[#00D084] text-[10px] font-bold uppercase">
+                  ✓ must have · rain
+                </span>
+                <span className="px-2 py-0.5 bg-red-100 dark:bg-red-950/60 text-red-900 dark:text-red-300 border border-red-600 text-[10px] font-black uppercase">
+                  ✕ must not have · pedestrian
+                </span>
+              </div>
+              <p className="text-xs font-sans text-stone-600 dark:text-stone-400 pt-1">
+                Guarantees zero pedestrian keyframes. Isolates road reflections, lane markers, and vehicle physics without human contamination.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleHeroSampleClick('rainy street without pedestrians')}
+              className="w-full py-2 bg-[#FF5500] hover:bg-black hover:text-white text-black font-mono text-xs font-black uppercase border border-black shadow-[2px_2px_0px_0px_#000] transition-all flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span>{isVietnamese ? "THỬ PHỦ ĐỊNH TRONG WORKSPACE" : "TEST NEGATION IN WORKSPACE"}</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </section>
 
@@ -924,13 +1188,15 @@ export function LandingPage() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b-2 border-black pb-6 font-mono">
           <div className="space-y-1">
             <span className="px-2.5 py-0.5 bg-[#00D084] text-black text-[10px] font-black uppercase border border-black shadow-[1.5px_1.5px_0px_0px_#000]">
-              [SECTION 02 // CINEMATIC GALLERY]
+              {isVietnamese ? "[MỤC 02 // THƯ VIỆN KHOẢNH KHẮC]" : "[SECTION 02 // CINEMATIC GALLERY]"}
             </span>
-            <h2 className="text-3xl sm:text-5xl font-black uppercase tracking-tight text-black dark:text-white">
-              PROMPT-TO-MOMENT DISCOVERY
+            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black uppercase tracking-tight leading-tight text-black dark:text-white">
+              {isVietnamese ? "KHÁM PHÁ THEO KHOẢNH KHẮC" : "PROMPT-TO-MOMENT DISCOVERY"}
             </h2>
             <p className="text-xs text-stone-600 dark:text-stone-400 max-w-2xl font-sans">
-              Explore how SceneSearch pinpoints exact keyframes and verifies scene constraints across diverse genres.
+              {isVietnamese
+                ? "Khám phá cách SceneSearch định vị chính xác từng keyframe và xác minh các ràng buộc khung cảnh qua nhiều thể loại."
+                : "Explore how SceneSearch pinpoints exact keyframes and verifies scene constraints across diverse genres."}
             </p>
           </div>
 
@@ -1032,7 +1298,7 @@ export function LandingPage() {
             <span className="px-2.5 py-0.5 bg-[#FFD700] text-black text-[10px] font-black uppercase border border-black shadow-[1.5px_1.5px_0px_0px_#000]">
               [SECTION 03 // DATASET CORPUS & GROUND TRUTH]
             </span>
-            <h2 className="text-3xl sm:text-5xl font-black uppercase tracking-tight text-black dark:text-white">
+            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black uppercase tracking-tight leading-tight text-black dark:text-white">
               AUTONOMOUS DRIVING DATASET CORPUS
             </h2>
             <p className="text-xs text-stone-600 dark:text-stone-400 max-w-3xl font-sans">
@@ -1270,7 +1536,7 @@ export function LandingPage() {
             <span className="px-2.5 py-0.5 bg-[#7C3AED] text-white text-[10px] font-black uppercase border border-black shadow-[1.5px_1.5px_0px_0px_#000]">
               [SECTION 04 // RETRIEVAL BENCHMARKS]
             </span>
-            <h2 className="text-3xl sm:text-5xl font-black uppercase tracking-tight text-black dark:text-white">
+            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black uppercase tracking-tight leading-tight text-black dark:text-white">
               RETRIEVAL MODEL BENCHMARK
             </h2>
             <p className="text-xs text-stone-600 dark:text-stone-400 max-w-3xl font-sans">
@@ -1789,9 +2055,19 @@ export function LandingPage() {
             >
               BENCHMARKS
             </button>
-            <Link to="/search" className="hover:text-[#FF5500]">
-              SEARCH WORKSPACE
-            </Link>
+            {isAuthenticated ? (
+              <Link to="/search" className="hover:text-[#FF5500]">
+                SEARCH WORKSPACE
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openAuth('login')}
+                className="hover:text-[#FF5500] cursor-pointer"
+              >
+                SEARCH WORKSPACE
+              </button>
+            )}
           </div>
 
           <div className="text-xs text-stone-500 text-right space-y-1">

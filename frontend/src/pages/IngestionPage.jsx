@@ -49,8 +49,6 @@ export const IngestionPage = () => {
 
   useEffect(() => {
     refreshModelStatus()
-    const timer = window.setInterval(refreshModelStatus, 5000)
-    return () => window.clearInterval(timer)
   }, [refreshModelStatus])
 
   const changeModelState = async (action) => {

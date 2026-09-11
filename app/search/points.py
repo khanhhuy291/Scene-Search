@@ -145,7 +145,7 @@ def build_filter(
 def build_point(
     granularity: Granularity,
     entity_id: str,
-    vector: list[float],
+    vector: list[float] | dict[str, list[float]],
     payload: ScenePayload,
 ) -> Any:
     from qdrant_client.http import models

@@ -43,6 +43,7 @@ class FrameRecord:
     covers_start_ms: int | None = None
     covers_end_ms: int | None = None
     embedding: list[float] | None = None
+    qwen_embedding: list[float] | None = None
 
 
 @dataclass
@@ -62,7 +63,7 @@ class SceneRecord:
 @dataclass(frozen=True)
 class EmbeddingRecord:
     scene_id: str
-    vector: list[float]
+    vector: list[float] | dict[str, list[float]]
     model: str
     version: str
 

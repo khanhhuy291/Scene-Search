@@ -8,17 +8,23 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
-  Activity
+  Activity,
+  Sparkles,
+  Flame,
+  BarChart3
 } from 'lucide-react'
 
 export const Sidebar = ({ activeTab, setActiveTab, isCollapsed, setIsCollapsed }) => {
   const menuItems = [
-    { id: 'corpus', label: 'Corpus Health', icon: Activity },
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'users', label: 'Users & Access', icon: Users },
+    { id: 'traces', label: 'Truy vết (APM Traces)', icon: Flame },
+    { id: 'eval', label: 'Đánh giá & Benchmark', icon: BarChart3 },
+    { id: 'overview', label: 'Tổng quan Hệ thống', icon: LayoutDashboard },
+    { id: 'corpus', label: 'Sức khỏe Dữ liệu', icon: Activity },
+    { id: 'rlhf', label: 'RLHF & Reranker', icon: Sparkles },
     { id: 'tasks', label: 'Celery Workers', icon: Cpu },
-    { id: 'vectordb', label: 'Qdrant Vector', icon: Database },
-    { id: 'storage', label: 'Storage & Logs', icon: HardDrive }
+    { id: 'users', label: 'Quản lý Người dùng', icon: Users },
+    { id: 'vectordb', label: 'Vector Qdrant', icon: Database },
+    { id: 'storage', label: 'Lưu trữ Object Storage', icon: HardDrive }
   ]
 
   return (

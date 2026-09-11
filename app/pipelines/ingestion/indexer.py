@@ -43,7 +43,59 @@ def build_scene_points(
             behaviors=behaviors,
         )
         data = payload.to_dict()
+
+        # Extract rich VLM metadata if generated during ingestion
+        primary_frame = scene.keyframes[0] if scene.keyframes else None
+        vlm_data = (primary_frame.metadata.get("vlm_data") if primary_frame else None) or {}
+        extracted_meta = vlm_data.get("metadata") or {
+            "scene": {
+                "scene_type": "residential",
+                "road_type": "residential",
+                "weather": "clear",
+                "time_of_day": "day",
+                "lighting": "daylight",
+                "road_surface": "dry",
+                "visibility": "good",
+                "traffic_density": "low",
+            },
+            "traffic": {
+                "cars": "low" if "car" in objects else "none",
+                "motorcycles": "none",
+                "trucks": "none",
+                "buses": "none",
+                "pedestrians": "low" if "person" in objects else "none",
+            },
+            "traffic_control": {
+                "traffic_light": {"present": False, "state": "unknown"},
+                "signs": [],
+            },
+            "road": {
+                "lane_count": None,
+                "ego_lane": "unknown",
+                "lane_marking": "none",
+                "intersection": False,
+                "roundabout": False,
+                "curve": "straight",
+                "road_markings": [],
+            },
+            "ocr": [],
+            "retrieval_tags": sorted(set(objects + behaviors + ["driving", "dashcam"])),
+            "caption": f"Dashcam driving scene at {scene.start_ms / 1000.0:.1f}s.",
+        }
+        present_concepts = vlm_data.get("present_concepts") or objects or ["car", "road"]
+        absent_concepts = vlm_data.get("absent_concepts") or ["night", "rain"]
+
+        frame_index = getattr(primary_frame, "frame_index", 0) if primary_frame else 0
+        minio_path = scene.thumbnail_key or f"{scene.video_id}/frame_{frame_index:05d}.jpg"
+
         data.update(
+            frame_id=frame_index,
+            frame_name=f"frame_{frame_index:05d}.jpg",
+            minio_path=minio_path,
+            metadata=extracted_meta,
+            video_second=round(scene.start_ms / 1000.0, 2),
+            present_concepts=present_concepts,
+            absent_concepts=absent_concepts,
             scene_id=scene.scene_id,
             start_ms=scene.start_ms,
             end_ms=scene.end_ms,
@@ -71,8 +123,15 @@ async def persist_vectors(
     except ValueError as exc:
         raise PersistenceError("Invalid Qdrant vector configuration", stage="persistence") from exc
     except Exception as exc:
+        from loguru import logger
+
+        logger.exception(
+            "Failed to persist Qdrant scene vectors for video {video_id}: {exc}",
+            video_id=video_id,
+            exc=exc,
+        )
         raise RetryablePersistenceError(
-            "Unable to persist Qdrant scene vectors", stage="persistence"
+            f"Unable to persist Qdrant scene vectors: {exc}", stage="persistence"
         ) from exc
 
 

@@ -46,9 +46,9 @@ async def test_search_stays_public(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_media_requires_authentication(client: AsyncClient) -> None:
+async def test_media_allows_optional_authentication(client: AsyncClient) -> None:
     response = await client.get("/api/v1/media/clip/not-a-real-point")
-    assert response.status_code == 401
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

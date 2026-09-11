@@ -9,11 +9,7 @@ for all canonical concepts, and updates the Qdrant payload with:
 from __future__ import annotations
 
 import asyncio
-import json
-import ssl
-import sys
 import time
-import urllib.request
 from typing import Any
 
 from core.config import get_settings

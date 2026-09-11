@@ -142,7 +142,8 @@ export const toScene = (result, index) => {
     previewUrl: withTimeFragment(basePreview, startSeconds),
     previewBaseUrl: basePreview ? basePreview.split('#')[0] : null,
     frameNo: result.frame_no,
-    keyframesMatched: result.keyframes_matched ?? 1,
+    keyframesMatched: result.keyframes_matched ?? result.matched ?? 1,
+    totalKeyframes: result.total_keyframes ?? result.total_kf ?? 8,
     confirmed: result.confirmed ?? [],
     denied: result.denied ?? [],
     contradictionNote: result.contradiction_note || null,
@@ -159,6 +160,9 @@ export const toScene = (result, index) => {
   }
   primary.matchingMoments = buildMatchingMoments(result, primary)
   primary.keyframesMatched = Math.max(primary.keyframesMatched, primary.matchingMoments.length)
+  if (primary.totalKeyframes < primary.keyframesMatched) {
+    primary.totalKeyframes = primary.keyframesMatched
+  }
   return primary
 }
 

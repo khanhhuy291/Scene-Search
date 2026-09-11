@@ -143,7 +143,6 @@ class DictEncoder:
         return [self.mapping.get(text, self.default) for text in texts]
 
 
-
 def visual_keyframe(
     point_id: str,
     video_id: str,

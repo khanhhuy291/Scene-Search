@@ -101,6 +101,8 @@ _CONCEPT_PATTERNS: dict[str, tuple[str, ...]] = {
         r"ô tô",
         r"xe hơi",
         r"xe con",
+        r"xe cộ",
+        r"xe",
     ),
     "truck": (r"trucks?", r"lorr(?:y|ies)", r"semi-?trailers?", r"vans?", r"xe tải"),
     "bus": (r"buses", r"busses", r"bus", r"coaches?", r"xe buýt"),
@@ -423,18 +425,78 @@ class ParsedQuery:
     def embedding_text(self) -> str:
         """Text actually sent to the visual / caption towers.
 
-        English queries pass through as ``semantic_text``, minus surface forms of
-        concepts that are no longer required -- otherwise removing a filter chip
-        would leave the encoder still looking for that concept. A Vietnamese (or
-        otherwise non-Latin) query is replaced by English glosses of the
-        remaining required concepts, because those towers share an English
-        image-text space.
+        Preserves all descriptive adjectives (e.g. colors, actions) and translates
+        Vietnamese keywords so both multimodal Qwen and English SigLIP receive
+        the complete query context.
         """
 
         if _has_non_ascii_letters(self.semantic_text):
+            translated = translate_vietnamese_query(self.semantic_text)
+            if translated:
+                return translated
             gloss = " ".join(concept_embed_gloss(concept) for concept in self.required)
             return gloss or self.semantic_text
         return _english_embedding_text(self.semantic_text, self.required)
+
+
+_VN_TRANSLATION_MAP: tuple[tuple[str, str], ...] = (
+    (r"\bxe hơi\b", "car"),
+    (r"\bxe ô tô\b", "car"),
+    (r"\bô tô\b", "car"),
+    (r"\bxe con\b", "car"),
+    (r"\bxe máy\b", "motorcycle"),
+    (r"\bxe đạp\b", "bicycle"),
+    (r"\bxe tải\b", "truck"),
+    (r"\bxe buýt\b", "bus"),
+    (r"\bxe cộ\b", "vehicles"),
+    (r"\bxe\b", "car"),
+    (r"\bđèn đỏ\b", "red traffic light"),
+    (r"\bđèn xanh\b", "green traffic light"),
+    (r"\bđèn vàng\b", "yellow traffic light"),
+    (r"\bđèn giao thông\b", "traffic light"),
+    (r"\bđèn tín hiệu\b", "traffic signal"),
+    (r"\bngười đi bộ\b", "pedestrian walking"),
+    (r"\bngười\b", "people"),
+    (r"\bmàu vàng\b", "yellow"),
+    (r"\bvàng\b", "yellow"),
+    (r"\bmàu đỏ\b", "red"),
+    (r"\bđỏ\b", "red"),
+    (r"\bmàu trắng\b", "white"),
+    (r"\btrắng\b", "white"),
+    (r"\bmàu đen\b", "black"),
+    (r"\bđen\b", "black"),
+    (r"\bmàu xanh\b", "blue green"),
+    (r"\bxanh lá\b", "green"),
+    (r"\bxanh dương\b", "blue"),
+    (r"\bxanh\b", "blue green"),
+    (r"\btrời mưa\b", "rain rainy"),
+    (r"\bmưa\b", "rain rainy"),
+    (r"\btuyết\b", "snow snowy"),
+    (r"\bsương mù\b", "fog foggy"),
+    (r"\bban đêm\b", "night nighttime"),
+    (r"\bbuổi tối\b", "night nighttime"),
+    (r"\bđêm\b", "night nighttime"),
+    (r"\bban ngày\b", "day daylight"),
+    (r"\bngã tư\b", "intersection crossroads"),
+    (r"\bgiao lộ\b", "intersection"),
+    (r"\bđường cao tốc\b", "highway"),
+    (r"\bcao tốc\b", "highway"),
+    (r"\bvà\b", "and"),
+    (r"\bcó\b", "with"),
+    (r"\bở\b", "at"),
+    (r"\btrong\b", "in"),
+    (r"\bđang\b", ""),
+    (r"\bchạy\b", "driving moving"),
+    (r"\bdừng\b", "stopped stopping"),
+)
+
+
+def translate_vietnamese_query(text: str) -> str:
+    """Translate Vietnamese query terms into semantic English preserving all adjectives and entities."""
+    res = text.lower()
+    for pattern, rep in _VN_TRANSLATION_MAP:
+        res = re.sub(pattern, rep, res, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", res).strip()
 
 
 def concept_embed_gloss(concept: str) -> str:
