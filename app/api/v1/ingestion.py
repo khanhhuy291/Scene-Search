@@ -104,7 +104,11 @@ async def process_direct_uploaded_video(
     payload: ProcessUploadRequest,
     _: None = Depends(require_qwen_embedding_ready),
 ) -> TaskStatusResponse:
-    """Enqueue Celery ingestion for a video directly uploaded to Google Cloud Storage."""
+    """Enqueue Celery ingestion for a video directly uploaded to object storage.
+
+    Mirrors ``/ingest/upload``: claim the video as ``processing`` before enqueue so
+    ``mark_video_indexed`` can complete at the end of the worker pipeline.
+    """
     try:
         UUID(payload.video_id)
     except ValueError:
@@ -119,14 +123,23 @@ async def process_direct_uploaded_video(
     )
     await corpus.set_video_assets(video_id, raw_object_key=payload.raw_key)
 
+    claimed = await corpus.claim_video_ingestion(video_id, allow_retry=True)
+    if not claimed:
+        raise HTTPException(status_code=409, detail="This video is already being processed")
+
     task_id = str(uuid4())
-    record = await create_task_status(
-        task_id,
-        payload.filename,
-        video_id=str(video_id),
-        celery_task_id=task_id,
-        pipeline_version=_PIPELINE_VERSION,
-    )
+    try:
+        record = await create_task_status(
+            task_id,
+            payload.filename,
+            video_id=str(video_id),
+            celery_task_id=task_id,
+            pipeline_version=_PIPELINE_VERSION,
+        )
+    except Exception:
+        await corpus.mark_video_ingestion_failed(video_id)
+        raise
+
     try:
         await asyncio.to_thread(
             process_video_ingestion.apply_async,
