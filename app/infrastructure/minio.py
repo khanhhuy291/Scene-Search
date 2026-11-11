@@ -102,6 +102,22 @@ class MinIOStorage:
         except (MinioException, OSError) as exc:
             raise MinIOError(f"Unable to download object {object_name!r} to {target}") from exc
 
+    def read_object(self, object_name: str) -> bytes:
+        """Read one object into memory and always release the MinIO response."""
+
+        if not object_name.strip():
+            raise ValueError("object_name cannot be empty")
+        response = None
+        try:
+            response = self.client.get_object(self.bucket, object_name)
+            return response.read()
+        except (MinioException, OSError) as exc:
+            raise MinIOError(f"Unable to read object {object_name!r}") from exc
+        finally:
+            if response is not None:
+                response.close()
+                response.release_conn()
+
     def delete_object(self, object_name: str) -> None:
         """Delete an object during compensating cleanup."""
 

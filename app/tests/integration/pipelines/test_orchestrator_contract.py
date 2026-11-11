@@ -120,6 +120,11 @@ async def test_registered_video_becomes_scene_preview_and_vector(monkeypatch) ->
         return function(*args, **kwargs)
 
     monkeypatch.setattr(preview_generator.asyncio, "to_thread", run_inline)
+    monkeypatch.setattr(
+        preview_generator,
+        "_write_full_video",
+        lambda source, target, ctx: target.write_bytes(b"video"),
+    )
 
     result = await run_ingestion_pipeline(
         job_id="11111111-1111-4111-8111-111111111111",
@@ -135,8 +140,8 @@ async def test_registered_video_becomes_scene_preview_and_vector(monkeypatch) ->
     assert repository.rows[0].privacy_status == "verified"
     assert len(indexer.points) == 1
     assert storage.uploaded == [
-        f"{VIDEO_ID}/frame_00000.jpg",
-        f"{VIDEO_ID}.mp4",
+        f"videos/{VIDEO_ID}/playback.mp4",
+        f"videos/{VIDEO_ID}/segments/{repository.rows[0].id}/thumbnail.jpg",
     ]
 
 

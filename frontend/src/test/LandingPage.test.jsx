@@ -40,7 +40,7 @@ describe('LandingPage Hero Section & Brutalist Auth Integration', () => {
     expect(screen.getByRole('button', { name: /SEARCH ⌘ \//i })).toBeInTheDocument()
   })
 
-  it('opens brutalist auth modal when clicking SIGN UP and allows 1-click demo autofill in SIGN IN mode', () => {
+  it('opens auth modal and accepts actual account credentials without demo autofill', () => {
     render(
       <MemoryRouter>
         <ToastProvider>
@@ -63,16 +63,11 @@ describe('LandingPage Hero Section & Brutalist Auth Integration', () => {
     const signInTab = screen.getByRole('button', { name: /\[01 \/\/ SIGN IN\]/i })
     fireEvent.click(signInTab)
 
-    // Demo Autofill should be visible
-    expect(screen.getByText(/1-CLICK DEMO AUTOFILL:/i)).toBeInTheDocument()
-
-    // Click Admin autofill
-    const adminAutofill = screen.getByRole('button', { name: /ADMIN \(INGEST\)/i })
-    fireEvent.click(adminAutofill)
-
-    // Input should contain admin email
+    expect(screen.queryByText(/1-CLICK DEMO AUTOFILL:/i)).not.toBeInTheDocument()
     const emailInput = screen.getByPlaceholderText(/name@scenesearch.ai/i)
-    expect(emailInput.value).toBe('admin@scenesearch.ai')
+    expect(emailInput.value).toBe('')
+    fireEvent.change(emailInput, { target: { value: 'admin@example.com' } })
+    expect(emailInput.value).toBe('admin@example.com')
   })
 
   it('renders dataset section with BDD-100K, Kaggle 20GB subset, and 88-query testset', () => {

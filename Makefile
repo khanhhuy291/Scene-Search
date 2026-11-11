@@ -5,7 +5,27 @@
 	eval eval-dry eval-check
 
 COMPOSE := docker compose --env-file app/.env -f docker-compose.yml
+LOCAL_COMPOSE := docker compose --env-file app/.env -f docker-compose.local.yml
 PYTHON := app/.venv/bin/python
+
+.PHONY: local-build local-up local-down local-logs local-ps local-admin
+local-build:
+	$(LOCAL_COMPOSE) build
+
+local-up:
+	$(LOCAL_COMPOSE) up -d --build
+
+local-down:
+	$(LOCAL_COMPOSE) down
+
+local-logs:
+	$(LOCAL_COMPOSE) logs -f --tail=100
+
+local-ps:
+	$(LOCAL_COMPOSE) ps
+
+local-admin:
+	$(LOCAL_COMPOSE) exec api python -m services.bootstrap_admin
 
 install:
 	$(MAKE) -C app install

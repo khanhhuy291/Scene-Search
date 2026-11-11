@@ -113,9 +113,10 @@ async def test_delete_video_revokes_task_and_removes_all_artifacts() -> None:
     video_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     plan = VideoDeletionPlan(
         celery_task_ids=("11111111-1111-4111-8111-111111111111",),
+        raw_object_key=f"{video_id}.mov",
     )
-    raw = SimpleNamespace(delete_prefix=Mock())
-    derived = SimpleNamespace(delete_prefix=Mock())
+    raw = SimpleNamespace(delete_prefix=Mock(), delete_object=Mock())
+    derived = SimpleNamespace(delete_prefix=Mock(), delete_object=Mock())
 
     async def run_inline(function, *args, **kwargs):
         return function(*args, **kwargs)
@@ -136,8 +137,11 @@ async def test_delete_video_revokes_task_and_removes_all_artifacts() -> None:
     cancel.assert_awaited_once()
     delete_vectors.assert_awaited_once_with(video_id)
     raw.delete_prefix.assert_called_once_with(f"raw/{video_id}/")
+    raw.delete_object.assert_called_once_with(f"{video_id}.mov")
     assert derived.delete_prefix.call_args_list == [
         call(f"videos/{video_id}/"),
         call(f"thumbnails/{video_id}/"),
+        call(f"{video_id}/"),
     ]
+    derived.delete_object.assert_called_once_with(f"{video_id}.mp4")
     delete_row.assert_awaited_once()

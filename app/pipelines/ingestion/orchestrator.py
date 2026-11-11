@@ -176,6 +176,7 @@ async def run_ingestion_pipeline(
                 pipeline_version=pipeline_version,
                 max_duration_sec=deps.settings.video.segment_seconds,
                 gap_threshold_sec=deps.settings.video.segment_gap_tolerance_s,
+                sample_interval_ms=max(1, round(1000 / deps.settings.video.sample_fps)),
             )
             if not scenes:
                 raise PipelineError("Pipeline produced no privacy-safe scenes", stage="privacy")
@@ -206,7 +207,7 @@ async def run_ingestion_pipeline(
             )
 
             await _stage(progress, 80, "preview_generation")
-            uploaded = await generate_previews(ctx, scenes, deps.derived_storage)
+            uploaded = await generate_previews(ctx, scenes, deps.derived_storage, local_video)
 
             await _stage(progress, 85, "persistence")
             rows = [
@@ -260,7 +261,9 @@ async def run_ingestion_pipeline(
                 "duplicate": False,
                 "scenes_indexed": len(scenes),
                 "vectors_indexed": written,
-                "previews_created": sum(1 for scene in scenes if scene.preview_key),
+                "previews_created": len(
+                    {scene.preview_key for scene in scenes if scene.preview_key}
+                ),
                 "metrics": dict(ctx.metrics),
                 "pipeline_version": pipeline_version,
             }

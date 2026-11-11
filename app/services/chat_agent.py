@@ -96,7 +96,7 @@ class SceneSearchQAAgent:
         base_url = (
             os.getenv("LLM_BASE_URL") or llm.base_url or "https://integrate.api.nvidia.com/v1"
         ).rstrip("/")
-        model = os.getenv("LLM_MODEL") or llm.model or "meta/llama-3.2-11b-vision-instruct"
+        model = os.getenv("LLM_MODEL") or llm.model or "nvidia/nemotron-3.5-super-vl-120b-a12b"
         url = f"{base_url}/chat/completions"
 
         headers = {
@@ -110,10 +110,7 @@ class SceneSearchQAAgent:
         if fallback_models:
             models_to_try.extend([m for m in fallback_models if m != model])
         else:
-            for default_alt in [
-                "meta/llama-3.2-11b-vision-instruct",
-                "meta/llama-3.2-90b-vision-instruct",
-            ]:
+            for default_alt in ["nvidia/nemotron-3.5-super-vl-120b-a12b"]:
                 if default_alt != model:
                     models_to_try.append(default_alt)
 
@@ -126,6 +123,7 @@ class SceneSearchQAAgent:
                     "messages": messages,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
+                    "chat_template_kwargs": {"enable_thinking": False},
                 }
                 if response_format:
                     payload["response_format"] = response_format
@@ -354,6 +352,7 @@ class SceneSearchQAAgent:
                     point_id=kf.point_id,
                     timestamp=timecode,
                     timestamp_s=kf.timestamp_s,
+                    ts_end_s=kf.end_timestamp_s,
                     caption=kf.caption,
                     preview_url=preview_url,
                     clip_url=clip_url,

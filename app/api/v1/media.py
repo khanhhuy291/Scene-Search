@@ -164,6 +164,7 @@ def _candidate_keys_for_video(video_key: str | None, video_id: str | None) -> li
             candidates.append(f"{stem}{suffix}")
     if video_id:
         vid = str(video_id).strip()
+        candidates.append(f"videos/{vid}/playback.mp4")
         candidates.append(f"{vid}.mov")
         candidates.append(f"{vid}.mp4")
         candidates.append(f"raw/{vid}/source.mp4")
@@ -250,9 +251,7 @@ def _read_object(bucket: str, object_key: str) -> bytes:
     if object_key in _thumbnail_cache:
         return _thumbnail_cache[object_key]
 
-    is_video = any(
-        object_key.lower().endswith(ext) for ext in (".mp4", ".mov", ".webm", ".mkv")
-    ) or object_key.startswith(("videos/", "raw_videos/", "raw/"))
+    is_video = any(object_key.lower().endswith(ext) for ext in (".mp4", ".mov", ".webm", ".mkv"))
     if is_video:
         candidate_keys = _candidate_keys_for_video(object_key, None)
     else:
@@ -277,12 +276,11 @@ def _read_object(bucket: str, object_key: str) -> bytes:
     # 2. Check MinIO stores (primary client direct)
     settings = get_settings().minio
     primary_client = _client()
-    raw_bucket = settings.raw_bucket or "scenesearch-raw-vinai"
     derived_bucket = settings.derived_bucket or "scencesearch-frames-vinai"
     candidate_buckets = (
-        [raw_bucket, derived_bucket, settings.scene_media_bucket, settings.bucket]
+        [derived_bucket, settings.scene_media_bucket, settings.bucket]
         if is_video
-        else [derived_bucket, raw_bucket, settings.scene_media_bucket, settings.bucket]
+        else [derived_bucket, settings.scene_media_bucket, settings.bucket]
     )
     seen_b = set()
     candidate_buckets = [b for b in candidate_buckets if b and not (b in seen_b or seen_b.add(b))]
@@ -511,9 +509,8 @@ async def _resolve_media_location_fast(
     # 2. Priority check: Primary storage client first (GCS / MinIO direct - 20ms)
     settings = get_settings().minio
     primary_client = _client()
-    raw_bucket = settings.raw_bucket or "scenesearch-raw-vinai"
     derived_bucket = settings.derived_bucket or "scencesearch-frames-vinai"
-    candidate_buckets = [raw_bucket, derived_bucket, settings.scene_media_bucket, settings.bucket]
+    candidate_buckets = [derived_bucket, settings.scene_media_bucket, settings.bucket]
     seen_b = set()
     candidate_buckets = [b for b in candidate_buckets if b and not (b in seen_b or seen_b.add(b))]
 

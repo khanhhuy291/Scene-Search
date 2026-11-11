@@ -104,6 +104,8 @@ def build_scene_points(
             embedding_version=embedding.version,
             thumbnail_key=scene.thumbnail_key,
             video_key=scene.preview_key,
+            playback_timeline="source",
+            playback_anonymized=False,
         )
         point = build_point("segment", scene.scene_id, embedding.vector, payload)
         point.payload = data

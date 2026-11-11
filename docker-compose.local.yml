@@ -1,0 +1,163 @@
+name: scenesearch-local
+
+x-app: &app
+  env_file: ./app/.env
+  environment: &environment
+    APP_ENV: development
+    APP_DEBUG: "false"
+    APP_CORS_ORIGINS: '["http://localhost:5173","http://127.0.0.1:5173"]'
+    DATABASE_URL: postgresql+asyncpg://scenesearch:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in app/.env}@postgres:5432/scenesearch
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/1
+    CELERY_RESULT_BACKEND: redis://redis:6379/2
+    MINIO_ENDPOINT: minio:9000
+    MINIO_SECURE: "false"
+    MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY in app/.env}
+    MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in app/.env}
+    MINIO_BUCKET: scenesearch
+    MINIO_RAW_BUCKET: scenesearch-raw
+    MINIO_DERIVED_BUCKET: scenesearch-derived
+    QDRANT_URL: http://qdrant:6333
+    QDRANT_API_KEY: ""
+    QDRANT_COLLECTION: scenes_local
+    QDRANT_VECTOR_SIZE: "2048"
+    QDRANT_WRITE_VECTOR_NAME: qwen
+    QDRANT_ALLOW_NAMED_VECTOR_WRITES: "true"
+    SEARCH_MODE: qwen
+    SEARCH_VISUAL_VECTOR: qwen
+    SEARCH_AGENTIC_ENABLED: "true"
+    SEARCH_RERANK_ENABLED: "true"
+    ML_ENCODER_NAME: Qwen/Qwen3-VL-Embedding-2B
+    QWEN_EMBEDDING_URL: http://embedding-api:8001
+    ML_QWEN_EMBEDDING_URL: http://embedding-api:8001
+    QWEN_EMBEDDING_API_KEY: ${QWEN_EMBEDDING_API_KEY:?Set QWEN_EMBEDDING_API_KEY in app/.env}
+    QWEN_EMBEDDING_TIMEOUT: "300"
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: scenesearch
+      POSTGRES_DB: scenesearch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in app/.env}
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scenesearch -d scenesearch"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    image: scenesearch-local-minio
+    build:
+      context: ./deploy/local-minio
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY in app/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in app/.env}
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    volumes: ["minio_data:/data"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    ports: ["127.0.0.1:6333:6333"]
+    volumes: ["qdrant_data:/qdrant/storage"]
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    image: scenesearch-local-backend
+    build:
+      context: ./app
+      args: {EXTRAS: media}
+    command: sh -c "alembic upgrade head && exec uvicorn api.main:app --host 0.0.0.0 --port 8000"
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      minio: {condition: service_healthy}
+      qdrant: {condition: service_started}
+      embedding-api: {condition: service_healthy}
+
+  worker:
+    <<: *app
+    image: scenesearch-local-backend
+    command: celery -A worker.celery_app:celery_app worker -Q ingestion --loglevel=INFO --pool=solo
+    healthcheck:
+      disable: true
+    depends_on:
+      api: {condition: service_healthy}
+
+  embedding-api:
+    <<: *app
+    image: scenesearch-local-embedding
+    build:
+      context: ./app
+      args: {EXTRAS: ml}
+    command: uvicorn ml.embedding_api:app --host 0.0.0.0 --port 8001 --workers 1
+    environment:
+      <<: *environment
+      ML_DEVICE: cuda
+      ML_DTYPE: float16
+      ML_BATCH_SIZE: "1"
+      ML_IMAGE_SIZE: "224"
+      QWEN_EMBEDDING_URL: ""
+      ML_QWEN_EMBEDDING_URL: ""
+      HF_HOME: /home/appuser/.cache/huggingface
+      HUGGINGFACE_HUB_CACHE: /home/appuser/.cache/huggingface/hub
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    ports: ["127.0.0.1:8001:8001"]
+    volumes: ["huggingface_cache:/home/appuser/.cache/huggingface"]
+    shm_size: 2gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  frontend:
+    image: scenesearch-local-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    environment:
+      BACKEND_HOST: api:8000
+      PORT: "80"
+    ports: ["127.0.0.1:5173:80"]
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  qdrant_data:
+  huggingface_cache:

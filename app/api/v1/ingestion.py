@@ -379,10 +379,20 @@ async def delete_video(video_id: UUID) -> None:
                 terminate=False,
             )
         await delete_by_video(str(video_id))
+        if plan.raw_object_key:
+            await asyncio.to_thread(get_raw_storage().delete_object, plan.raw_object_key)
         await asyncio.to_thread(get_raw_storage().delete_prefix, f"raw/{video_id}/")
         await asyncio.to_thread(get_derived_storage().delete_prefix, f"videos/{video_id}/")
         await asyncio.to_thread(get_derived_storage().delete_prefix, f"thumbnails/{video_id}/")
+        # Legacy ingestion stored thumbnails and the overwritten preview here.
+        await asyncio.to_thread(get_derived_storage().delete_prefix, f"{video_id}/")
+        await asyncio.to_thread(get_derived_storage().delete_object, f"{video_id}.mp4")
         await corpus.delete_video(video_id)
+        from api.v1.media import reset_media_client
+        from search.catalog import reset_catalog
+
+        reset_media_client()
+        reset_catalog()
     except Exception as exc:
         raise HTTPException(
             status_code=503,

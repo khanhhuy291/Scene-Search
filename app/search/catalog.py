@@ -12,9 +12,9 @@ reasonable trade rather than a lazy one:
 
 * The collection is small and bounded: ~22k keyframes over ~880 videos, roughly
   20 MB of caption text.
-* The captions are immutable once written. A keyframe's description does not
-  change between searches, so a cached copy cannot go subtly stale -- it can only
-  miss keyframes added after the snapshot, which the TTL bounds.
+* The snapshot is normally stable between writes. Ingestion and the admin caption
+  refresh task increment a shared Redis generation so a changed caption causes a
+  reload on the next search; the TTL remains a fallback for other writers.
 * The alternative needs a full-text payload index on the collection, and the
   collection is owned by another workstream. Adding indexes to someone else's
   live index to satisfy a read path is not a change to make unilaterally.
@@ -51,6 +51,7 @@ _THREAD_OFFLOAD_MIN_FRAMES = 1000
 # Qdrant page size for the initial read. Larger pages mean fewer round trips; far
 # larger ones start to matter for peak memory during deserialization.
 _SCROLL_PAGE = 1000
+_CATALOG_GENERATION_KEY = "scenesearch:search-catalog-generation"
 
 # Live Viettech frames are named ``frame_00034.jpg`` (or MOT-style
 # ``<video-id>-0000001.jpg``) and often omit ``timestamp_sec``. The trailing
@@ -484,6 +485,7 @@ class KeyframeCatalog:
         self._per_video: dict[str, int] = {}
         self._loaded_at: float | None = None
         self._lock = asyncio.Lock()
+        self._shared_generation: int | None = None
         # Bumped on every load. Anything derived from a snapshot carries the
         # generation it was derived under, so misalignment is detectable
         # rather than silent.
@@ -629,12 +631,34 @@ class KeyframeCatalog:
         fresh snapshot and returns.
         """
 
-        if not force and self.loaded and not self.stale:
+        shared_generation = await self._read_shared_generation()
+        shared_changed = (
+            shared_generation is not None and shared_generation != self._shared_generation
+        )
+        if not force and self.loaded and not self.stale and not shared_changed:
             return
         async with self._lock:
-            if not force and self.loaded and not self.stale:
+            shared_generation = await self._read_shared_generation()
+            shared_changed = (
+                shared_generation is not None and shared_generation != self._shared_generation
+            )
+            if not force and self.loaded and not self.stale and not shared_changed:
                 return
             await self._load(client)
+            if shared_generation is not None:
+                self._shared_generation = shared_generation
+
+    async def _read_shared_generation(self) -> int | None:
+        """Read the cross-process invalidation counter; TTL remains the fallback."""
+
+        try:
+            from infrastructure.redis import get_redis_client
+
+            value = await get_redis_client().get(_CATALOG_GENERATION_KEY)
+            return int(value) if value is not None else None
+        except Exception as exc:
+            logger.debug("Search catalog generation check unavailable: {error}", error=exc)
+            return None
 
     async def _load(self, client: Any) -> None:
         collection = get_settings().qdrant.collection

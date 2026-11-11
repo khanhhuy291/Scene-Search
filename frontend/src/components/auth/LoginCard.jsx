@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Mail, Lock, ArrowRight, ShieldCheck, User } from 'lucide-react'
+import { Mail, Lock, ArrowRight } from 'lucide-react'
 import { FloatingInput } from '../common/FloatingInput'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -51,18 +51,6 @@ export const LoginCard = ({ onSwitchToRegister }) => {
     }
   }
 
-  const handleQuickDemoFill = (type) => {
-    if (type === 'admin') {
-      setEmail('admin@scenesearch.ai')
-      setPassword('Pass@123456')
-      addToast('Filled Admin credentials', 'info')
-    } else {
-      setEmail('engineer@scenesearch.ai')
-      setPassword('Pass@123456')
-      addToast('Filled Engineer credentials', 'info')
-    }
-  }
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}
@@ -77,30 +65,6 @@ export const LoginCard = ({ onSwitchToRegister }) => {
         <p className="text-stone-500 dark:text-[#a99d92] text-xs font-sans tracking-widest uppercase">
           Sign in to access video vector search & ingestion pipelines
         </p>
-      </div>
-
-      {/* Demo Credentials Helper Box */}
-      <div className="p-4 rounded-2xl bg-stone-50 dark:bg-[#181512] border border-stone-200 dark:border-[#403933] space-y-2">
-        <div className="text-[10px] font-sans font-bold uppercase tracking-widest text-stone-500 dark:text-[#a99d92]">
-          PRE-SEEDED ACCOUNTS (CLICK TO AUTOFILL):
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => handleQuickDemoFill('admin')}
-            className="flex-1 py-1.5 px-2 rounded-full bg-white dark:bg-[#25211e] border border-stone-300 dark:border-[#403933] hover:border-orange-700 dark:hover:border-[#789b86] text-stone-800 dark:text-[#ded3c8] text-[11px] font-mono font-bold flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-orange-700 dark:text-[#789b86]" /> Admin
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleQuickDemoFill('engineer')}
-            className="flex-1 py-1.5 px-2 rounded-full bg-white dark:bg-[#25211e] border border-stone-300 dark:border-[#403933] hover:border-orange-700 dark:hover:border-[#789b86] text-stone-800 dark:text-[#ded3c8] text-[11px] font-mono font-bold flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
-          >
-            <User className="w-3.5 h-3.5 text-stone-600 dark:text-[#a99d92]" /> Engineer
-          </button>
-        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-2">

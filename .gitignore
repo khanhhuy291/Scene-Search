@@ -15,6 +15,8 @@ app/.venv/
 app/.env
 app/data/
 app/logs/
+/data/
+/bdd100k_videos_train_00/
 *.db
 *.sqlite3
 
@@ -38,10 +40,6 @@ Thumbs.db
 
 # Local-only files
 docker-compose.override.yml
-
-# AI logs — tracked structure, ignored content
-.ai-log/*.jsonl
-.ai-log/archive/
 
 /scripts/
 

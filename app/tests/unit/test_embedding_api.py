@@ -2,6 +2,8 @@
 
 import base64
 import io
+import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -62,6 +64,8 @@ def test_inference_requires_explicit_model_load() -> None:
 def test_load_and_unload_model_lifecycle(monkeypatch) -> None:
     client = MagicMock()
     monkeypatch.setattr(embedding_api, "get_qwen_embedding_client", lambda: client)
+    siglip = MagicMock()
+    monkeypatch.setattr("ml.encoder.get_siglip_encoder", lambda: siglip)
 
     loaded = embedding_api._load_model()
     unloaded = embedding_api._unload_model()
@@ -70,6 +74,49 @@ def test_load_and_unload_model_lifecycle(monkeypatch) -> None:
     assert unloaded.state == "unloaded"
     client.load.assert_called_once_with()
     client.unload.assert_called_once_with()
+    siglip.load.assert_called_once_with()
+    siglip.unload.assert_called_once_with()
+
+
+def test_fatal_cuda_failure_cannot_be_reported_ready(monkeypatch) -> None:
+    client = MagicMock()
+    client.encode_images.side_effect = RuntimeError("CUDA error: unspecified launch failure")
+    monkeypatch.setattr(embedding_api, "get_qwen_embedding_client", lambda: client)
+    embedding_api._state = "ready"
+    request = embedding_api.EmbeddingRequest(mode="image", images=[_encoded_image()])
+    with pytest.raises(RuntimeError, match="launch failure"):
+        embedding_api._encode(request)
+    assert embedding_api._state == "error"
+    assert embedding_api._active_requests == 0
+    assert "restart" in embedding_api._last_error
+    with pytest.raises(embedding_api.ModelNotReadyError, match="error"):
+        embedding_api._begin_inference()
+    with pytest.raises(embedding_api.ModelNotReadyError, match="restart"):
+        embedding_api._load_model()
+
+
+def test_out_of_memory_is_not_a_sticky_launch_failure() -> None:
+    assert not embedding_api._fatal_cuda_error(RuntimeError("CUDA out of memory"))
+
+
+def test_cuda_service_does_not_silently_load_models_on_cpu(monkeypatch) -> None:
+    monkeypatch.setattr(
+        embedding_api, "get_settings", lambda: SimpleNamespace(ml=SimpleNamespace(device="cuda"))
+    )
+    monkeypatch.setitem(
+        sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False))
+    )
+    with pytest.raises(RuntimeError, match="CPU fallback is disabled"):
+        embedding_api._load_model()
+    assert embedding_api._state == "error"
+
+
+@pytest.mark.asyncio
+async def test_health_rejects_failed_model() -> None:
+    embedding_api._set_state("error", "GPU failed")
+    with pytest.raises(HTTPException) as exc:
+        await embedding_api.health()
+    assert exc.value.status_code == 503
 
 
 def test_unload_refuses_active_inference() -> None:

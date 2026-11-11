@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { playSegment, enforceSegmentEnd, restartSegmentOnPlay } from '../../lib/segmentPlayback'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bot,
@@ -88,8 +89,8 @@ export const ChatWidget = () => {
   // When video modal opens, seek to timestamp
   useEffect(() => {
     if (selectedVideoScene && videoRef.current) {
-      if (selectedVideoScene.timestamp_s) {
-        videoRef.current.currentTime = Math.max(0, selectedVideoScene.timestamp_s - 1)
+      if (videoRef.current.readyState >= 1) {
+        playSegment(videoRef.current, selectedVideoScene.timestamp_s, selectedVideoScene.ts_end_s)
       }
     }
   }, [selectedVideoScene])
@@ -524,10 +525,11 @@ export const ChatWidget = () => {
                     preload="auto"
                     playsInline
                     onLoadedMetadata={(e) => {
-                      if (selectedVideoScene?.timestamp_s) {
-                        e.target.currentTime = Math.max(0, selectedVideoScene.timestamp_s - 0.5)
-                      }
+                      playSegment(e.currentTarget, selectedVideoScene.timestamp_s, selectedVideoScene.ts_end_s)
                     }}
+                    onTimeUpdate={(e) => enforceSegmentEnd(e.currentTarget, selectedVideoScene.timestamp_s, selectedVideoScene.ts_end_s)}
+                    onSeeked={(e) => enforceSegmentEnd(e.currentTarget, selectedVideoScene.timestamp_s, selectedVideoScene.ts_end_s)}
+                    onPlay={(e) => restartSegmentOnPlay(e.currentTarget, selectedVideoScene.timestamp_s, selectedVideoScene.ts_end_s)}
                     className="w-full h-full object-contain bg-black"
                   >
                     Trình duyệt không hỗ trợ thẻ video.

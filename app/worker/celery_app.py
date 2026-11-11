@@ -3,7 +3,7 @@
 from celery import Celery
 
 from core.config import get_settings
-from worker.task_names import INGESTION_TASK_NAME
+from worker.task_names import CAPTION_REFRESH_TASK_NAME, INGESTION_TASK_NAME
 
 settings = get_settings().celery
 
@@ -11,7 +11,7 @@ celery_app = Celery(
     "scenesearch",
     broker=settings.broker_url,
     backend=settings.result_backend,
-    include=["worker.tasks.ingestion"],
+    include=["worker.tasks.ingestion", "worker.tasks.caption_refresh"],
 )
 
 celery_app.conf.update(
@@ -28,7 +28,11 @@ celery_app.conf.update(
         INGESTION_TASK_NAME: {
             "queue": "ingestion",
             "routing_key": "ingestion.video",
-        }
+        },
+        CAPTION_REFRESH_TASK_NAME: {
+            "queue": "ingestion",
+            "routing_key": "ingestion.caption_refresh",
+        },
     },
     task_serializer="json",
     task_soft_time_limit=settings.task_soft_time_limit,

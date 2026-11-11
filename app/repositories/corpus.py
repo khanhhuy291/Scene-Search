@@ -78,6 +78,7 @@ class BehaviorEventRow:
 @dataclass(frozen=True)
 class VideoDeletionPlan:
     celery_task_ids: tuple[str, ...]
+    raw_object_key: str | None = None
 
 
 async def upsert_video(
@@ -204,7 +205,9 @@ async def prepare_video_deletion(video_id: UUID) -> VideoDeletionPlan | None:
                 )
             )
         )
-        return VideoDeletionPlan(celery_task_ids=tuple(celery_ids))
+        return VideoDeletionPlan(
+            celery_task_ids=tuple(celery_ids), raw_object_key=video.raw_object_key
+        )
 
 
 async def cancel_video_tasks(video_id: UUID) -> None:

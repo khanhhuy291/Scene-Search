@@ -190,12 +190,22 @@ async def init_qdrant_collections(client: AsyncQdrantClient | None = None) -> bo
             await ensure_payload_indexes(qdrant)
             return False
 
+        vectors_config: models.VectorParams | dict[str, models.VectorParams] = models.VectorParams(
+            size=settings.vector_size, distance=models.Distance.COSINE
+        )
+        if settings.write_vector_name:
+            vectors_config = {settings.write_vector_name: vectors_config}
+            # The Qwen ingestion pipeline also writes the SigLIP tower used for
+            # deduplication and hybrid retrieval. A fresh local collection must
+            # accept the same payload as an existing multi-vector collection.
+            if settings.write_vector_name == "qwen" and settings.vector_size == 2048:
+                vectors_config["siglip"] = models.VectorParams(
+                    size=768, distance=models.Distance.COSINE
+                )
+
         await qdrant.create_collection(
             collection_name=settings.collection,
-            vectors_config=models.VectorParams(
-                size=settings.vector_size,
-                distance=models.Distance.COSINE,
-            ),
+            vectors_config=vectors_config,
             quantization_config=models.ScalarQuantization(
                 scalar=models.ScalarQuantizationConfig(
                     type=models.ScalarType.INT8,

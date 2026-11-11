@@ -7,12 +7,10 @@ import {
   Mail,
   Lock,
   User,
-  ShieldCheck,
   ArrowRight,
   AlertCircle,
   Eye,
-  EyeOff,
-  Zap
+  EyeOff
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -114,19 +112,6 @@ export function BrutalistAuthModal({ isOpen, initialMode = 'login', redirectOnSu
     }
   }
 
-  const handleAutofill = (role) => {
-    if (role === 'admin') {
-      setEmail('admin@scenesearch.ai')
-      setPassword('Pass@123456')
-      addToast('Filled Demo Admin credentials', 'info')
-    } else {
-      setEmail('engineer@scenesearch.ai')
-      setPassword('Pass@123456')
-      addToast('Filled Demo Engineer credentials', 'info')
-    }
-    setErrors({})
-  }
-
   if (!isOpen) return null
 
   const modalContent = (
@@ -200,39 +185,6 @@ export function BrutalistAuthModal({ isOpen, initialMode = 'login', redirectOnSu
               [02 // CREATE ACCOUNT]
             </button>
           </div>
-
-          {/* Demo Autofill Section (Available in Login Mode) */}
-          {mode === 'login' && (
-            <div className="mb-6 p-3.5 bg-white border-2 border-black shadow-[3px_3px_0px_0px_#000]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-mono text-[10px] font-black uppercase tracking-wider text-stone-500 flex items-center gap-1">
-                  <Zap className="w-3 h-3 text-[#FF5500] fill-[#FF5500]" />
-                  1-CLICK DEMO AUTOFILL:
-                </span>
-                <span className="font-mono text-[9px] font-bold text-[#FF5500] uppercase">
-                  READY TO TEST
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleAutofill('admin')}
-                  className="px-3 py-1.5 bg-[#F7F4EE] hover:bg-black hover:text-white text-black font-mono text-[11px] font-bold border border-black shadow-[2px_2px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#FF5500]" />
-                  <span>ADMIN (INGEST)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleAutofill('engineer')}
-                  className="px-3 py-1.5 bg-[#F7F4EE] hover:bg-black hover:text-white text-black font-mono text-[11px] font-bold border border-black shadow-[2px_2px_0px_0px_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <User className="w-3.5 h-3.5 text-[#00D084]" />
-                  <span>ENGINEER (DATASET)</span>
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
