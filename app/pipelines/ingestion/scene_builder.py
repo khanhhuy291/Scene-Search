@@ -21,6 +21,7 @@ def build_scenes(
     pipeline_version: str,
     max_duration_sec: float = 5.0,
     gap_threshold_sec: float = 2.0,
+    sample_interval_ms: int = 0,
 ) -> list[SceneRecord]:
     if max_duration_sec <= 0 or gap_threshold_sec < 0:
         raise ValueError("scene durations must be positive")
@@ -39,7 +40,9 @@ def build_scenes(
                 scene_id=scene_id(video_id, pipeline_version, index),
                 video_id=video_id,
                 start_ms=current[0].covers_start_ms or current[0].timestamp_ms,
-                end_ms=current[-1].covers_end_ms or current[-1].timestamp_ms,
+                # End is exclusive: include the final retained/deduplicated
+                # sample's interval, even when a segment has only one frame.
+                end_ms=(current[-1].covers_end_ms or current[-1].timestamp_ms) + sample_interval_ms,
                 keyframes=list(current),
                 metadata={"sampled_frame_count": len(current)},
                 behaviors=sorted(behaviors, key=lambda item: (item.start_ms, item.kind)),

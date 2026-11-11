@@ -293,8 +293,8 @@ class VideoSettings(_BaseSettings):
     segment_seconds: float = Field(default=5.0, gt=0, le=60)
     segment_gap_tolerance_s: float = Field(default=1.0, ge=0, le=10)
 
-    # Preview encoding for the derived bucket. These clips are anonymized and
-    # are the only video the API will serve.
+    # Full-video derived playback preserves source imagery/cadence. Encoding
+    # settings apply to the non-H.264 fallback; preview_fps is a legacy option.
     preview_codec: str = "libx264"
     preview_crf: int = Field(default=28, ge=0, le=51)
     preview_max_edge: int = Field(default=1280, ge=128, le=3840)

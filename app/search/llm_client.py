@@ -52,12 +52,6 @@ class LLMClient:
         }
 
         models_to_try = [self._settings.llm.model]
-        for alt in [
-            "meta/llama-3.2-11b-vision-instruct",
-            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-        ]:
-            if alt != self._settings.llm.model:
-                models_to_try.append(alt)
 
         timeout_sec = max(20.0, getattr(self._settings.llm, "timeout", 10.0))
 
@@ -73,6 +67,7 @@ class LLMClient:
                             else self._settings.llm.temperature
                         ),
                         "max_tokens": max_tokens,
+                        "chat_template_kwargs": {"enable_thinking": False},
                     }
                     if response_format:
                         payload["response_format"] = response_format

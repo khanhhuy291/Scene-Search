@@ -4,8 +4,10 @@ from unittest.mock import AsyncMock, Mock, call, patch
 import pytest
 
 from api.v1.ingestion import (
+    ProcessUploadRequest,
     _celery_fallback,
     delete_video,
+    process_direct_uploaded_video,
     upload_and_create_ingestion_task,
 )
 from repositories.corpus import VideoDeletionPlan
@@ -27,6 +29,38 @@ def test_celery_fallback_clamps_invalid_progress() -> None:
     assert response is not None
     assert response.status == TaskStatus.PROCESSING
     assert response.progress == 100
+
+
+@pytest.mark.asyncio
+async def test_process_direct_upload_claims_before_enqueue() -> None:
+    video_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    task_id = "11111111-1111-4111-8111-111111111111"
+    payload = ProcessUploadRequest(
+        video_id=video_id,
+        filename="clip.mp4",
+        raw_key=f"raw/{video_id}/clip.mp4",
+    )
+    record = SimpleNamespace(task_id=task_id)
+
+    async def run_inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    with (
+        patch("api.v1.ingestion.asyncio.to_thread", run_inline),
+        patch("api.v1.ingestion.corpus.upsert_video", AsyncMock(return_value=(video_id, False))),
+        patch("api.v1.ingestion.corpus.set_video_assets", AsyncMock()),
+        patch(
+            "api.v1.ingestion.corpus.claim_video_ingestion",
+            AsyncMock(return_value=True),
+        ) as claim,
+        patch("api.v1.ingestion.create_task_status", AsyncMock(return_value=record)),
+        patch("api.v1.ingestion.process_video_ingestion.apply_async") as enqueue,
+    ):
+        result = await process_direct_uploaded_video(payload)
+
+    assert result is record
+    claim.assert_awaited_once_with(video_id, allow_retry=True)
+    enqueue.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -79,9 +113,10 @@ async def test_delete_video_revokes_task_and_removes_all_artifacts() -> None:
     video_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     plan = VideoDeletionPlan(
         celery_task_ids=("11111111-1111-4111-8111-111111111111",),
+        raw_object_key=f"{video_id}.mov",
     )
-    raw = SimpleNamespace(delete_prefix=Mock())
-    derived = SimpleNamespace(delete_prefix=Mock())
+    raw = SimpleNamespace(delete_prefix=Mock(), delete_object=Mock())
+    derived = SimpleNamespace(delete_prefix=Mock(), delete_object=Mock())
 
     async def run_inline(function, *args, **kwargs):
         return function(*args, **kwargs)
@@ -102,8 +137,11 @@ async def test_delete_video_revokes_task_and_removes_all_artifacts() -> None:
     cancel.assert_awaited_once()
     delete_vectors.assert_awaited_once_with(video_id)
     raw.delete_prefix.assert_called_once_with(f"raw/{video_id}/")
+    raw.delete_object.assert_called_once_with(f"{video_id}.mov")
     assert derived.delete_prefix.call_args_list == [
         call(f"videos/{video_id}/"),
         call(f"thumbnails/{video_id}/"),
+        call(f"{video_id}/"),
     ]
+    derived.delete_object.assert_called_once_with(f"{video_id}.mp4")
     delete_row.assert_awaited_once()

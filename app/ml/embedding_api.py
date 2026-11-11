@@ -131,8 +131,22 @@ def _end_inference() -> None:
     global _state, _active_requests
     with _state_lock:
         _active_requests = max(0, _active_requests - 1)
-        if _active_requests == 0:
+        if _active_requests == 0 and _state == "busy":
             _state = "ready"
+
+
+def _fatal_cuda_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(
+        marker in message
+        for marker in (
+            "unspecified launch failure",
+            "illegal memory access",
+            "device-side assert",
+            "cuda_error_launch_failed",
+            "cuda error: device is lost",
+        )
+    )
 
 
 def _model_status() -> ModelStatusResponse:
@@ -163,7 +177,13 @@ def _model_status() -> ModelStatusResponse:
 
 def _load_model() -> ModelStatusResponse:
     with _state_lock:
-        current = _state
+        current, error = _state, _last_error
+    if (
+        current == "error"
+        and error
+        and ("CUDA context failed" in error or _fatal_cuda_error(RuntimeError(error)))
+    ):
+        raise ModelNotReadyError("CUDA context failed; restart the embedding-api container")
     if current in {"ready", "busy"}:
         return _model_status()
     if current in {"loading", "unloading"}:
@@ -171,6 +191,14 @@ def _load_model() -> ModelStatusResponse:
 
     _set_state("loading")
     try:
+        if get_settings().ml.device == "cuda":
+            import torch
+
+            if not torch.cuda.is_available():
+                raise RuntimeError(
+                    "CUDA was requested but cannot initialize. Recover the host NVIDIA driver "
+                    "and restart embedding-api; CPU fallback is disabled for this GPU service."
+                )
         with _inference_lock:
             get_qwen_embedding_client().load()
             from ml.encoder import get_siglip_encoder
@@ -237,6 +265,12 @@ def _encode(request: EmbeddingRequest) -> list[list[float]]:
             if request.mode == "image":
                 return client.encode_images(images)
             return client.encode_multimodal(images, request.texts)
+    except Exception as exc:
+        if _fatal_cuda_error(exc):
+            _set_state(
+                "error", "CUDA context failed; restart the embedding-api container: " + str(exc)
+            )
+        raise
     finally:
         for image in images:
             image.close()
@@ -262,6 +296,9 @@ app = FastAPI(title="Qwen & SigLIP Embedding Service", lifespan=lifespan)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
+    with _state_lock:
+        if _state == "error":
+            raise HTTPException(status_code=503, detail=_last_error or "Embedding model failed")
     return {"status": "ok"}
 
 

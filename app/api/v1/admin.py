@@ -2,17 +2,70 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated, Any
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 
 from api.deps import require_admin
 from db.models.review import User
 from schemas.admin import AdminTelemetry, EmbeddingModelStatus, EvalReportResponse
 from services.admin import collect_telemetry, load_eval_report
 from services.embedding_model import embedding_model_request
+from repositories.task_status import create_task_status, update_task_status
+from schemas.task import TaskStatus, TaskStatusResponse
+from worker.tasks.caption_refresh import refresh_fallback_captions
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+class CaptionRefreshRequest(BaseModel):
+    """Optional video scope; omitted or empty refreshes all fallback captions."""
+
+    video_ids: list[UUID] | None = Field(default=None, max_length=1000)
+
+
+@router.post(
+    "/captions/refresh",
+    response_model=TaskStatusResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def enqueue_caption_refresh(
+    payload: CaptionRefreshRequest,
+    _: Annotated[User, Depends(require_admin)],
+) -> TaskStatusResponse:
+    video_ids = list(dict.fromkeys(str(video_id) for video_id in (payload.video_ids or [])))
+    task_id = str(uuid4())
+    task_label = (
+        f"caption-refresh:{len(video_ids)}-videos" if video_ids else "caption-refresh:all-fallbacks"
+    )
+    record = await create_task_status(
+        task_id,
+        task_label,
+        celery_task_id=task_id,
+        pipeline_version="caption-refresh-v1",
+    )
+    try:
+        await asyncio.to_thread(
+            refresh_fallback_captions.apply_async,
+            kwargs={"task_id": task_id, "video_ids": video_ids or None},
+            task_id=task_id,
+        )
+    except Exception as exc:
+        await update_task_status(
+            task_id,
+            TaskStatus.FAILED,
+            progress=0,
+            error="Unable to enqueue caption refresh task",
+            error_code="enqueue_failed",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to enqueue caption refresh task",
+        ) from exc
+    return record
 
 
 @router.get("/telemetry", response_model=AdminTelemetry)

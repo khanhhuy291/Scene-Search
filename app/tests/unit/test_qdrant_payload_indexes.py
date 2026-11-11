@@ -8,6 +8,7 @@ filtered queries slow, so it is worth asserting.
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -80,3 +81,31 @@ def test_viettech_named_vectors_are_treated_as_hybrid_attach() -> None:
     assert qdrant_module._is_hybrid_named_vectors({"qwen": object(), "siglip": object()})
     assert qdrant_module.is_read_only_collection({"qwen": object(), "siglip": object()})
     assert not qdrant_module._is_hybrid_named_vectors({"siglip": object()})
+
+
+async def test_fresh_qwen_collection_accepts_both_ingestion_towers(monkeypatch) -> None:
+    monkeypatch.setenv("QDRANT_WRITE_VECTOR_NAME", "qwen")
+    monkeypatch.setenv("QDRANT_VECTOR_SIZE", "2048")
+    monkeypatch.setenv("ML_ENCODER_NAME", "Qwen/Qwen3-VL-Embedding-2B")
+    client = AsyncMock()
+    client.collection_exists.return_value = False
+
+    assert await qdrant_module.init_qdrant_collections(client) is True
+
+    vectors = client.create_collection.call_args.kwargs["vectors_config"]
+    assert {name: config.size for name, config in vectors.items()} == {
+        "qwen": 2048,
+        "siglip": 768,
+    }
+
+
+async def test_fresh_unnamed_collection_keeps_legacy_schema(monkeypatch) -> None:
+    monkeypatch.setenv("QDRANT_WRITE_VECTOR_NAME", "")
+    client = AsyncMock()
+    client.collection_exists.return_value = False
+
+    await qdrant_module.init_qdrant_collections(client)
+
+    vectors = client.create_collection.call_args.kwargs["vectors_config"]
+    assert not isinstance(vectors, dict)
+    assert vectors.size == qdrant_module.get_settings().qdrant.vector_size

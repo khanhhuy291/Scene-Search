@@ -12,6 +12,7 @@ import {
   AlertTriangle
 } from "lucide-react"
 import { humanizeConcept, withTimeFragment } from "../../lib/searchApi"
+import { playSegment, enforceSegmentEnd, restartSegmentOnPlay } from "../../lib/segmentPlayback"
 import { useAuth } from "../../context/AuthContext"
 import { useDataset } from "../../context/DatasetContext"
 import { useToast } from "../../context/ToastContext"
@@ -101,14 +102,8 @@ export const SceneCard = ({ scene, searchMeta = null }) => {
   const seekToMoment = useCallback((moment) => {
     const video = videoRef.current
     if (!video || !moment) return
-    const time = Math.max(0, Number(moment.startSeconds) || 0)
     const apply = () => {
-      if (Number.isFinite(video.duration) && video.duration > 0) {
-        video.currentTime = Math.min(time, Math.max(0, video.duration - 0.05))
-      } else {
-        video.currentTime = time
-      }
-      video.play?.().catch(() => {})
+      playSegment(video, moment.startSeconds, moment.endSeconds)
     }
     if (video.readyState >= 1) apply()
     else video.addEventListener("loadedmetadata", apply, { once: true })
@@ -404,6 +399,9 @@ export const SceneCard = ({ scene, searchMeta = null }) => {
                       preload="metadata"
                       playsInline
                       onLoadedMetadata={handleLoadedMetadata}
+                      onTimeUpdate={(e) => enforceSegmentEnd(e.currentTarget, activeMoment.startSeconds, activeMoment.endSeconds)}
+                      onSeeked={(e) => enforceSegmentEnd(e.currentTarget, activeMoment.startSeconds, activeMoment.endSeconds)}
+                      onPlay={(e) => restartSegmentOnPlay(e.currentTarget, activeMoment.startSeconds, activeMoment.endSeconds)}
                       onCanPlay={() => setVideoLoading(false)}
                       onPlaying={() => setVideoLoading(false)}
                       onWaiting={() => setVideoLoading(true)}

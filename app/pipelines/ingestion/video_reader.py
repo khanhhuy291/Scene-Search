@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
+
+from PIL import Image
 
 from infrastructure.minio import MinIOStorage
 from pipelines.common.context import PipelineContext
@@ -15,6 +18,49 @@ from pipelines.common.errors import (
     VideoValidationError,
 )
 from pipelines.common.types import FrameRecord
+
+
+def _snap_rotation_degrees(value: float) -> int:
+    """Normalize to {0, 90, 180, 270} for stable PIL transpose behavior."""
+    degrees = int(round(float(value))) % 360
+    return int(round(degrees / 90.0) * 90) % 360
+
+
+def display_rotation_ccw(frame: Any, stream: Any) -> int:
+    """Return counter-clockwise degrees needed so decoded pixels match display.
+
+    Prefers PyAV ``VideoFrame.rotation`` (DISPLAYMATRIX, already CCW). Falls back
+    to the legacy ``rotate`` stream tag, which FFmpeg/Android store as clockwise.
+    """
+    frame_rotation = getattr(frame, "rotation", None)
+    if frame_rotation:
+        try:
+            snapped = _snap_rotation_degrees(frame_rotation)
+            if snapped:
+                return snapped
+        except (TypeError, ValueError):
+            pass
+
+    metadata = getattr(stream, "metadata", None) or {}
+    rotate_tag = metadata.get("rotate")
+    if rotate_tag is None:
+        return 0
+    try:
+        clockwise = _snap_rotation_degrees(float(rotate_tag))
+    except (TypeError, ValueError):
+        return 0
+    return 0 if clockwise == 0 else (360 - clockwise) % 360
+
+
+def apply_display_rotation(image: Image.Image, degrees_ccw: int) -> Image.Image:
+    """Bake display orientation into pixel buffers used for derived assets."""
+    snapped = _snap_rotation_degrees(degrees_ccw)
+    if snapped == 0:
+        return image
+    rotated = image.rotate(snapped, expand=True)
+    if rotated is not image:
+        image.close()
+    return rotated
 
 
 async def acquire_video(ctx: PipelineContext, raw_storage: MinIOStorage) -> Path:
@@ -100,10 +146,12 @@ def decode_video(path: Path) -> Iterator[FrameRecord]:
             for index, frame in enumerate(container.decode(video=0)):
                 timestamp_s = float(frame.time) if frame.time is not None else index / fallback_fps
                 timestamp_ms = max(0, round(timestamp_s * 1000))
+                image = frame.to_image().convert("RGB")
+                image = apply_display_rotation(image, display_rotation_ccw(frame, stream))
                 yield FrameRecord(
                     timestamp_ms=timestamp_ms,
                     frame_index=index,
-                    image=frame.to_image().convert("RGB"),
+                    image=image,
                     covers_start_ms=timestamp_ms,
                     covers_end_ms=timestamp_ms,
                 )
@@ -113,4 +161,10 @@ def decode_video(path: Path) -> Iterator[FrameRecord]:
         raise VideoDecodeError("Unable to decode video", stage="decode") from exc
 
 
-__all__ = ["acquire_video", "decode_video", "validate_video"]
+__all__ = [
+    "acquire_video",
+    "apply_display_rotation",
+    "decode_video",
+    "display_rotation_ccw",
+    "validate_video",
+]

@@ -1,5 +1,9 @@
 # 🚗 SceneSearch (P-081) — Multimodal Driving-Scene Search & Slicing Engine
 
+> **Chạy Docker local trên Linux/NVIDIA:** xem [LOCAL_DOCKER.md](docs/LOCAL_DOCKER.md).
+> Dùng `make local-up`, `make local-admin`, mở http://localhost:5173.
+> Stack này dùng `docker-compose.local.yml` và dữ liệu local riêng.
+
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.14-blue.svg)](app/)
 [![React](https://img.shields.io/badge/react-19.0-61dafb.svg)](frontend/)
@@ -331,17 +335,16 @@ Hệ thống được đánh giá thực nghiệm toàn diện trên tập chu�
 
 ## 12. Deliverables Checklist & Team (Checklist BTC & Nhóm)
 
-### 📋 Checklist 10 Deliverables Bàn Giao Cho BTC
+### 📋 Checklist 9 Deliverables Bàn Giao Cho BTC
 - [x] **1. Source Code (GitHub):** Mã nguồn hoàn chỉnh tại `app/` và `frontend/`, 421/421 unit tests PASS.
 - [x] **2. README.md:** Tài liệu mô tả đầy đủ Problem → Solution → Architecture → Setup → Benchmarks → Team.
 - [x] **3. Architecture Diagram:** Sơ đồ tương tác [`docs/architecture.html`](./docs/architecture.html), bản đồ họa [`docs/assest/architecture.svg`](./docs/assest/architecture.svg) và đặc tả Mermaid tại [`docs/architecture_diagram.md`](docs/architecture_diagram.md).
-- [x] **4. AI Logs:** 316+ tương tác LLM được trích xuất và đồng bộ tại `.ai-log/` và máy chủ AI Log Ingestion.
-- [x] **5. Live URL / Deploy:** Hoạt động ổn định tại [https://c3-app-081.vinai.io.vn/](https://c3-app-081.vinai.io.vn/) *(hoặc [Cloud Run App](https://scenesearch-604840409374.asia-southeast1.run.app))*.
-- [x] **6. Video Demo:** [Link Video Demo 5 Phút (Google Drive)](https://drive.google.com/file/d/1gXYMA_KUQKXAMoWqEM4tfmlxS2FZBpq8/view?usp=sharing) — Kịch bản chi tiết tại [`presentation/README.md`](presentation/README.md).
-- [x] **7. Pitch Deck:** [Link Pitch Deck Slide (Google Drive)](https://drive.google.com/file/d/12VwYiEgA-HEAYQIE1Vo7gIWLeQOJIMpq/view?usp=sharing) — Dàn ý 10 slide tại [`presentation/README.md`](presentation/README.md).
-- [x] **8. Weekly Journal:** Nhật ký 4 tuần phát triển tại [`JOURNAL.md`](JOURNAL.md).
-- [x] **9. Worklog:** Nhật ký công việc hằng ngày tại [`WORKLOG.md`](WORKLOG.md).
-- [x] **10. Evaluation Evidence:** Báo cáo thực nghiệm đầy đủ tại [`eval/results/report.md`](eval/results/report.md) (và [`EVALUATION.md`](EVALUATION.md)).
+- [x] **4. Live URL / Deploy:** Hoạt động ổn định tại [https://c3-app-081.vinai.io.vn/](https://c3-app-081.vinai.io.vn/) *(hoặc [Cloud Run App](https://scenesearch-604840409374.asia-southeast1.run.app))*.
+- [x] **5. Video Demo:** [Link Video Demo 5 Phút (Google Drive)](https://drive.google.com/file/d/1gXYMA_KUQKXAMoWqEM4tfmlxS2FZBpq8/view?usp=sharing) — Kịch bản chi tiết tại [`presentation/README.md`](presentation/README.md).
+- [x] **6. Pitch Deck:** [Link Pitch Deck Slide (Google Drive)](https://drive.google.com/file/d/12VwYiEgA-HEAYQIE1Vo7gIWLeQOJIMpq/view?usp=sharing) — Dàn ý 10 slide tại [`presentation/README.md`](presentation/README.md).
+- [x] **7. Weekly Journal:** Nhật ký 4 tuần phát triển tại [`JOURNAL.md`](JOURNAL.md).
+- [x] **8. Worklog:** Nhật ký công việc hằng ngày tại [`WORKLOG.md`](WORKLOG.md).
+- [x] **9. Evaluation Evidence:** Báo cáo thực nghiệm đầy đủ tại [`eval/results/report.md`](eval/results/report.md) (và [`EVALUATION.md`](EVALUATION.md)).
 
 ### 👥 Đội Ngũ Phát Triển (Team)
 - **Mã dự án:** SceneSearch-P-081 (AI20K Cohort 3)

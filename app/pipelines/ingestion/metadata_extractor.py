@@ -194,6 +194,9 @@ async def _extract_frame_vlm(
         ],
         "temperature": 0.1,
         "max_tokens": 1500,
+        # Nemotron 3.5 Super VL can spend its token budget on reasoning and
+        # return null `message.content` unless thinking is explicitly disabled.
+        "chat_template_kwargs": {"enable_thinking": False},
     }
 
     async with semaphore:
@@ -205,7 +208,27 @@ async def _extract_frame_vlm(
                     if response.status_code == 429:
                         await asyncio.sleep(1.0 + attempt * 1.0)
                         continue
-                    content = response.json()["choices"][0]["message"]["content"]
+                    if response.status_code != 200:
+                        logger.warning(
+                            "VLM model {} returned HTTP {}: {}",
+                            model_name,
+                            response.status_code,
+                            response.text[:300],
+                        )
+                        continue
+                    choices = response.json().get("choices")
+                    if not choices:
+                        logger.warning(
+                            "VLM model {} returned no choices: {}",
+                            model_name,
+                            response.text[:300],
+                        )
+                        continue
+                    message = choices[0].get("message") or {}
+                    content = message.get("content") or ""
+                    if not content and message.get("reasoning_content"):
+                        logger.warning("VLM model {} returned reasoning without content", model_name)
+                        continue
                     parsed = _parse_json_dict(content)
                     if parsed and "metadata" in parsed and "caption" in parsed["metadata"]:
                         frame.metadata["vlm_data"] = parsed
@@ -238,11 +261,7 @@ async def extract_scene_vlm_metadata(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    models_to_try = [
-        "meta/llama-3.2-11b-vision-instruct",
-        llm.model,
-        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-    ]
+    models_to_try = [llm.model]
     semaphore = asyncio.Semaphore(max_concurrency)
 
     async with httpx.AsyncClient(timeout=30.0) as client:

@@ -8,11 +8,6 @@ extend-exclude = [
     "frontend",
     "data",
     "reports",
-    # Pre-existing developer logging tooling, left under its original style.
-    "scripts/log_antigravity.py",
-    "scripts/log_hook.py",
-    "scripts/log_manual.py",
-    "scripts/submit_log.py",
 ]
 
 [lint]

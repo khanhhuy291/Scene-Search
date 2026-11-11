@@ -68,6 +68,17 @@ def test_privacy_verifier_never_publishes_failed_frame() -> None:
         safe.image.close()
 
 
+def test_single_sample_segment_has_a_playable_exclusive_end() -> None:
+    source = [frame(12000, 12)]
+    try:
+        scenes = build_scenes(
+            source, video_id=VIDEO_ID, pipeline_version="v1", sample_interval_ms=1000
+        )
+        assert (scenes[0].start_ms, scenes[0].end_ms) == (12000, 13000)
+    finally:
+        close_frames(source)
+
+
 class StubEncoder:
     dimension = 4
     model_version = "stub-v1"

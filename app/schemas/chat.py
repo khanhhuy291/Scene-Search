@@ -42,6 +42,7 @@ class SceneSource(BaseModel):
     point_id: str | None = None
     timestamp: str | None = None
     timestamp_s: float | None = None
+    ts_end_s: float | None = None
     caption: str | None = None
     preview_url: str | None = None
     clip_url: str | None = None
