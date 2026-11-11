@@ -8,7 +8,6 @@ import tempfile
 from getpass import getpass
 from pathlib import Path
 
-
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 MODEL = "nvidia/nemotron-3.5-super-vl-120b-a12b"
 BASE_URL = "https://integrate.api.nvidia.com/v1"

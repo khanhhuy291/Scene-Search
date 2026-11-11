@@ -227,7 +227,9 @@ async def _extract_frame_vlm(
                     message = choices[0].get("message") or {}
                     content = message.get("content") or ""
                     if not content and message.get("reasoning_content"):
-                        logger.warning("VLM model {} returned reasoning without content", model_name)
+                        logger.warning(
+                            "VLM model {} returned reasoning without content", model_name
+                        )
                         continue
                     parsed = _parse_json_dict(content)
                     if parsed and "metadata" in parsed and "caption" in parsed["metadata"]:

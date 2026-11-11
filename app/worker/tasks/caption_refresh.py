@@ -44,7 +44,9 @@ async def _run_refresh(
             progress=100,
             result=result,
         )
-        logger.info("Caption refresh task {task_id} completed: {result}", task_id=task_id, result=result)
+        logger.info(
+            "Caption refresh task {task_id} completed: {result}", task_id=task_id, result=result
+        )
         return result
     except Exception as exc:
         logger.exception("Caption refresh task {task_id} failed", task_id=task_id)
@@ -57,7 +59,9 @@ async def _run_refresh(
                 error_code="caption_refresh_failed",
             )
         except Exception:
-            logger.exception("Could not persist caption refresh failure for {task_id}", task_id=task_id)
+            logger.exception(
+                "Could not persist caption refresh failure for {task_id}", task_id=task_id
+            )
         raise
 
 
@@ -85,7 +89,9 @@ def refresh_fallback_captions(
             )
             for result in results:
                 if isinstance(result, BaseException):
-                    logger.error("Caption refresh infrastructure cleanup failed: {error}", error=result)
+                    logger.error(
+                        "Caption refresh infrastructure cleanup failed: {error}", error=result
+                    )
 
     return asyncio.run(run_and_close())
 

@@ -9,14 +9,14 @@ from typing import Any
 
 from loguru import logger
 from PIL import Image
-from qdrant_client import AsyncQdrantClient, models
+from qdrant_client import AsyncQdrantClient
 
 from core.config import get_settings
 from infrastructure.minio import get_derived_storage
 from infrastructure.qdrant import get_qdrant_client
+from infrastructure.redis import get_redis_client
 from pipelines.common.types import FrameRecord, SceneRecord
 from pipelines.ingestion.metadata_extractor import extract_scene_vlm_metadata
-from infrastructure.redis import get_redis_client
 
 _FALLBACK_CAPTION = re.compile(r"^Dashcam driving scene at\s+\d+(?:\.\d+)?s\.$")
 _CATALOG_GENERATION_KEY = "scenesearch:search-catalog-generation"
@@ -140,8 +140,7 @@ async def refresh_fallback_captions(
             logger.exception("Caption refresh batch failed: {error}", error=exc)
             failed += len(scenes)
             failures.extend(
-                {"point_id": str(point_id), "error": str(exc)[:240]}
-                for point_id in point_ids
+                {"point_id": str(point_id), "error": str(exc)[:240]} for point_id in point_ids
             )
             for scene in scenes:
                 scene.keyframes[0].image.close()
@@ -155,7 +154,9 @@ async def refresh_fallback_captions(
             caption = str(metadata.get("caption") or "").strip()
             if not caption or _FALLBACK_CAPTION.fullmatch(caption):
                 failed += 1
-                failures.append({"point_id": str(point_id), "error": "VLM returned fallback caption"})
+                failures.append(
+                    {"point_id": str(point_id), "error": "VLM returned fallback caption"}
+                )
                 continue
 
             tags = metadata.get("retrieval_tags") or []
