@@ -25,8 +25,9 @@ install-ml:
 
 lock: install
 	@if [ -n "$(UV)" ]; then \
-		$(UV) pip compile --extra dev --extra media --output-file requirements.lock pyproject.toml; \
+		$(UV) pip compile --python-version 3.11 --extra dev --extra media --output-file requirements.lock pyproject.toml; \
 	else \
+		$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 11) else "Lockfile targets Python 3.11; use uv or a Python 3.11 environment.")' && \
 		$(PYTHON) -m piptools compile --extra dev --extra media --output-file requirements.lock pyproject.toml; \
 	fi
 
