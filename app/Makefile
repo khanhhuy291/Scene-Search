@@ -3,7 +3,7 @@
 
 BOOTSTRAP_PYTHON ?= python3
 PYTHON ?= .venv/bin/python
-PYTHON_SOURCES := api core db eval infrastructure ml pipelines repositories schemas search services worker tests
+PYTHON_SOURCES := api core db eval infrastructure ml pipelines repositories schemas scripts search services worker tests
 TEST_ENV := OPENBLAS_NUM_THREADS=1
 UV := $(shell which uv 2>/dev/null || (test -x $(HOME)/.local/bin/uv && echo $(HOME)/.local/bin/uv))
 
