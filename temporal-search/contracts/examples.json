@@ -1,0 +1,260 @@
+{
+  "notice": "All IDs, scores, model names and timings are invented contract examples, not measured results or labeled quality evidence.",
+  "requests": {
+    "english": {
+      "query": "A car changes into the left lane",
+      "candidate_video_count": 10,
+      "moments_per_video": 3,
+      "limit": 10
+    },
+    "vietnamese_manual": {
+      "query": "Xe ph?a tr??c chuy?n sang l?n tr?i",
+      "query_language": "vi",
+      "grounding_query": "The car ahead changes into the left lane",
+      "candidate_video_count": 5,
+      "limit": 5,
+      "moments_per_video": 2
+    },
+    "filtered": {
+      "query": "A pedestrian crosses the road",
+      "candidate_video_count": 10,
+      "limit": 5,
+      "filters": {
+        "video_ids": [
+          "example-video-001"
+        ],
+        "time_range_s": [
+          10,
+          25
+        ]
+      }
+    }
+  },
+  "responses": {
+    "complete": {
+      "contract_version": "0.1.0",
+      "request_id": "example-request-complete",
+      "status": "complete",
+      "query": {
+        "original": "A car changes into the left lane",
+        "retrieval_text": "A car changes into the left lane",
+        "grounding_text": "A car changes into the left lane",
+        "grounding_language": "en",
+        "translation_source": "as_provided"
+      },
+      "scope": "candidate_videos_only",
+      "retrieval": {
+        "provider": "legacy-api",
+        "scene_count_scope": "returned_matched_moments",
+        "raw_ann_count": null,
+        "truncated": false,
+        "upstream_degraded": false,
+        "upstream_exhaustive": false
+      },
+      "counts": {
+        "candidate_scenes_observed": 8,
+        "candidate_videos_received": 3,
+        "candidate_videos_processed": 3,
+        "candidate_videos_skipped": 0,
+        "returned_videos": 1
+      },
+      "results": [
+        {
+          "video_id": "example-video-001",
+          "video_duration_s": 40.0,
+          "retrieval_rank": 1,
+          "retrieval_score": 0.032,
+          "evidence_scenes": [
+            {
+              "scene_id": "example-legacy-scene-001",
+              "ts_start_s": 10.0,
+              "ts_end_s": 15.0,
+              "thumbnail_url": null
+            }
+          ],
+          "moments": [
+            {
+              "moment_id": "example-query-moment-001",
+              "ts_start_s": 12.0,
+              "ts_end_s": 18.0,
+              "grounding_score": 0.82,
+              "source": "temporal_grounding",
+              "thumbnail_url": null
+            }
+          ],
+          "playback": {
+            "url": null,
+            "kind": "unavailable",
+            "origin_s": 0,
+            "duration_s": 0,
+            "privacy_state": "unknown"
+          }
+        }
+      ],
+      "warnings": [],
+      "timings_ms": {
+        "total": 100,
+        "retrieval": 30,
+        "query_encoding": 10,
+        "feature_read": 10,
+        "grounding": 40,
+        "postprocess": 5
+      },
+      "model": {
+        "name": "example-qd-detr-clip-only",
+        "checkpoint_id": "example-checkpoint-id",
+        "feature_version": "example-feature-version"
+      }
+    },
+    "partial": {
+      "contract_version": "0.1.0",
+      "request_id": "example-request-partial",
+      "status": "partial",
+      "query": {
+        "original": "A car changes into the left lane",
+        "retrieval_text": "A car changes into the left lane",
+        "grounding_text": "A car changes into the left lane",
+        "grounding_language": "en",
+        "translation_source": "as_provided"
+      },
+      "scope": "candidate_videos_only",
+      "retrieval": {
+        "provider": "legacy-api",
+        "scene_count_scope": "returned_matched_moments",
+        "raw_ann_count": null,
+        "truncated": false,
+        "upstream_degraded": false,
+        "upstream_exhaustive": false
+      },
+      "counts": {
+        "candidate_scenes_observed": 8,
+        "candidate_videos_received": 3,
+        "candidate_videos_processed": 2,
+        "candidate_videos_skipped": 1,
+        "returned_videos": 1
+      },
+      "results": [
+        {
+          "video_id": "example-video-001",
+          "video_duration_s": 40.0,
+          "retrieval_rank": 1,
+          "retrieval_score": 0.032,
+          "evidence_scenes": [
+            {
+              "scene_id": "example-legacy-scene-001",
+              "ts_start_s": 10.0,
+              "ts_end_s": 15.0,
+              "thumbnail_url": null
+            }
+          ],
+          "moments": [
+            {
+              "moment_id": "example-query-moment-001",
+              "ts_start_s": 12.0,
+              "ts_end_s": 18.0,
+              "grounding_score": 0.82,
+              "source": "temporal_grounding",
+              "thumbnail_url": null
+            }
+          ],
+          "playback": {
+            "url": null,
+            "kind": "unavailable",
+            "origin_s": 0,
+            "duration_s": 0,
+            "privacy_state": "unknown"
+          }
+        }
+      ],
+      "warnings": [
+        {
+          "code": "feature_cache_missing",
+          "message": "An eligible candidate has no compatible feature cache.",
+          "video_id": "example-video-002"
+        }
+      ],
+      "timings_ms": {
+        "total": 100,
+        "retrieval": 30,
+        "query_encoding": 10,
+        "feature_read": 10,
+        "grounding": 40,
+        "postprocess": 5
+      },
+      "model": {
+        "name": "example-qd-detr-clip-only",
+        "checkpoint_id": "example-checkpoint-id",
+        "feature_version": "example-feature-version"
+      }
+    },
+    "no_match": {
+      "contract_version": "0.1.0",
+      "request_id": "example-request-empty",
+      "status": "no_match",
+      "query": {
+        "original": "A car changes into the left lane",
+        "retrieval_text": "A car changes into the left lane",
+        "grounding_text": "A car changes into the left lane",
+        "grounding_language": "en",
+        "translation_source": "as_provided"
+      },
+      "scope": "candidate_videos_only",
+      "retrieval": {
+        "provider": "legacy-api",
+        "scene_count_scope": "returned_matched_moments",
+        "raw_ann_count": null,
+        "truncated": false,
+        "upstream_degraded": false,
+        "upstream_exhaustive": false
+      },
+      "counts": {
+        "candidate_scenes_observed": 8,
+        "candidate_videos_received": 3,
+        "candidate_videos_processed": 3,
+        "candidate_videos_skipped": 0,
+        "returned_videos": 0
+      },
+      "results": [],
+      "warnings": [],
+      "timings_ms": {
+        "total": 100,
+        "retrieval": 30,
+        "query_encoding": 10,
+        "feature_read": 10,
+        "grounding": 40,
+        "postprocess": 5
+      },
+      "model": {
+        "name": "example-qd-detr-clip-only",
+        "checkpoint_id": "example-checkpoint-id",
+        "feature_version": "example-feature-version"
+      }
+    }
+  },
+  "errors": {
+    "grounding_query_required": {
+      "request_id": "example-request-error",
+      "error": {
+        "code": "grounding_query_required",
+        "message": "An English grounding query is required until a translator is configured.",
+        "retryable": false
+      }
+    },
+    "feature_cache_unavailable": {
+      "request_id": "example-request-error",
+      "error": {
+        "code": "feature_cache_unavailable",
+        "message": "No candidate could be grounded with the available feature cache.",
+        "retryable": true
+      }
+    },
+    "upstream_unavailable": {
+      "request_id": "example-request-error",
+      "error": {
+        "code": "upstream_unavailable",
+        "message": "The legacy search service is unavailable.",
+        "retryable": true
+      }
+    }
+  }
+}

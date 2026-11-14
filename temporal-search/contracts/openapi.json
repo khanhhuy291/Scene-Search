@@ -1,0 +1,1049 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Scene Search Temporal Branch",
+    "version": "0.1.0",
+    "description": "Group A design only. No server is implemented or deployed. Legacy API/schema are unchanged. Semantic rules are in docs/temporal-search/API_CONTRACT.md."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8002",
+      "description": "Planned loopback-only service, not running"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "temporalHealth",
+        "responses": {
+          "200": {
+            "description": "Dependencies and grounder ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service alive but not ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/temporal-search": {
+      "post": {
+        "operationId": "temporalSearch",
+        "description": "Bounded synchronous query over selected candidate videos. No implicit indexing, training, legacy fallback, or global completeness claim.",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionCookie": []
+          },
+          {}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemporalSearchRequest"
+              },
+              "examples": {
+                "english": {
+                  "value": {
+                    "query": "A car changes into the left lane",
+                    "candidate_video_count": 10,
+                    "moments_per_video": 3,
+                    "limit": 10
+                  }
+                },
+                "vietnamese_manual": {
+                  "value": {
+                    "query": "Xe ph?a tr??c chuy?n sang l?n tr?i",
+                    "query_language": "vi",
+                    "grounding_query": "The car ahead changes into the left lane",
+                    "candidate_video_count": 5,
+                    "limit": 5,
+                    "moments_per_video": 2
+                  }
+                },
+                "filtered": {
+                  "value": {
+                    "query": "A pedestrian crosses the road",
+                    "candidate_video_count": 10,
+                    "limit": 5,
+                    "filters": {
+                      "video_ids": [
+                        "example-video-001"
+                      ],
+                      "time_range_s": [
+                        10,
+                        25
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Grounding completed fully, partially, or with no matching moments. See semantic rules in API_CONTRACT.md.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemporalSearchResponse"
+                },
+                "examples": {
+                  "complete": {
+                    "value": {
+                      "contract_version": "0.1.0",
+                      "request_id": "example-request-complete",
+                      "status": "complete",
+                      "query": {
+                        "original": "A car changes into the left lane",
+                        "retrieval_text": "A car changes into the left lane",
+                        "grounding_text": "A car changes into the left lane",
+                        "grounding_language": "en",
+                        "translation_source": "as_provided"
+                      },
+                      "scope": "candidate_videos_only",
+                      "retrieval": {
+                        "provider": "legacy-api",
+                        "scene_count_scope": "returned_matched_moments",
+                        "raw_ann_count": null,
+                        "truncated": false,
+                        "upstream_degraded": false,
+                        "upstream_exhaustive": false
+                      },
+                      "counts": {
+                        "candidate_scenes_observed": 8,
+                        "candidate_videos_received": 3,
+                        "candidate_videos_processed": 3,
+                        "candidate_videos_skipped": 0,
+                        "returned_videos": 1
+                      },
+                      "results": [
+                        {
+                          "video_id": "example-video-001",
+                          "video_duration_s": 40.0,
+                          "retrieval_rank": 1,
+                          "retrieval_score": 0.032,
+                          "evidence_scenes": [
+                            {
+                              "scene_id": "example-legacy-scene-001",
+                              "ts_start_s": 10.0,
+                              "ts_end_s": 15.0,
+                              "thumbnail_url": null
+                            }
+                          ],
+                          "moments": [
+                            {
+                              "moment_id": "example-query-moment-001",
+                              "ts_start_s": 12.0,
+                              "ts_end_s": 18.0,
+                              "grounding_score": 0.82,
+                              "source": "temporal_grounding",
+                              "thumbnail_url": null
+                            }
+                          ],
+                          "playback": {
+                            "url": null,
+                            "kind": "unavailable",
+                            "origin_s": 0,
+                            "duration_s": 0,
+                            "privacy_state": "unknown"
+                          }
+                        }
+                      ],
+                      "warnings": [],
+                      "timings_ms": {
+                        "total": 100,
+                        "retrieval": 30,
+                        "query_encoding": 10,
+                        "feature_read": 10,
+                        "grounding": 40,
+                        "postprocess": 5
+                      },
+                      "model": {
+                        "name": "example-qd-detr-clip-only",
+                        "checkpoint_id": "example-checkpoint-id",
+                        "feature_version": "example-feature-version"
+                      }
+                    }
+                  },
+                  "partial": {
+                    "value": {
+                      "contract_version": "0.1.0",
+                      "request_id": "example-request-partial",
+                      "status": "partial",
+                      "query": {
+                        "original": "A car changes into the left lane",
+                        "retrieval_text": "A car changes into the left lane",
+                        "grounding_text": "A car changes into the left lane",
+                        "grounding_language": "en",
+                        "translation_source": "as_provided"
+                      },
+                      "scope": "candidate_videos_only",
+                      "retrieval": {
+                        "provider": "legacy-api",
+                        "scene_count_scope": "returned_matched_moments",
+                        "raw_ann_count": null,
+                        "truncated": false,
+                        "upstream_degraded": false,
+                        "upstream_exhaustive": false
+                      },
+                      "counts": {
+                        "candidate_scenes_observed": 8,
+                        "candidate_videos_received": 3,
+                        "candidate_videos_processed": 2,
+                        "candidate_videos_skipped": 1,
+                        "returned_videos": 1
+                      },
+                      "results": [
+                        {
+                          "video_id": "example-video-001",
+                          "video_duration_s": 40.0,
+                          "retrieval_rank": 1,
+                          "retrieval_score": 0.032,
+                          "evidence_scenes": [
+                            {
+                              "scene_id": "example-legacy-scene-001",
+                              "ts_start_s": 10.0,
+                              "ts_end_s": 15.0,
+                              "thumbnail_url": null
+                            }
+                          ],
+                          "moments": [
+                            {
+                              "moment_id": "example-query-moment-001",
+                              "ts_start_s": 12.0,
+                              "ts_end_s": 18.0,
+                              "grounding_score": 0.82,
+                              "source": "temporal_grounding",
+                              "thumbnail_url": null
+                            }
+                          ],
+                          "playback": {
+                            "url": null,
+                            "kind": "unavailable",
+                            "origin_s": 0,
+                            "duration_s": 0,
+                            "privacy_state": "unknown"
+                          }
+                        }
+                      ],
+                      "warnings": [
+                        {
+                          "code": "feature_cache_missing",
+                          "message": "An eligible candidate has no compatible feature cache.",
+                          "video_id": "example-video-002"
+                        }
+                      ],
+                      "timings_ms": {
+                        "total": 100,
+                        "retrieval": 30,
+                        "query_encoding": 10,
+                        "feature_read": 10,
+                        "grounding": 40,
+                        "postprocess": 5
+                      },
+                      "model": {
+                        "name": "example-qd-detr-clip-only",
+                        "checkpoint_id": "example-checkpoint-id",
+                        "feature_version": "example-feature-version"
+                      }
+                    }
+                  },
+                  "no_match": {
+                    "value": {
+                      "contract_version": "0.1.0",
+                      "request_id": "example-request-empty",
+                      "status": "no_match",
+                      "query": {
+                        "original": "A car changes into the left lane",
+                        "retrieval_text": "A car changes into the left lane",
+                        "grounding_text": "A car changes into the left lane",
+                        "grounding_language": "en",
+                        "translation_source": "as_provided"
+                      },
+                      "scope": "candidate_videos_only",
+                      "retrieval": {
+                        "provider": "legacy-api",
+                        "scene_count_scope": "returned_matched_moments",
+                        "raw_ann_count": null,
+                        "truncated": false,
+                        "upstream_degraded": false,
+                        "upstream_exhaustive": false
+                      },
+                      "counts": {
+                        "candidate_scenes_observed": 8,
+                        "candidate_videos_received": 3,
+                        "candidate_videos_processed": 3,
+                        "candidate_videos_skipped": 0,
+                        "returned_videos": 0
+                      },
+                      "results": [],
+                      "warnings": [],
+                      "timings_ms": {
+                        "total": 100,
+                        "retrieval": 30,
+                        "query_encoding": 10,
+                        "feature_read": 10,
+                        "grounding": 40,
+                        "postprocess": 5
+                      },
+                      "model": {
+                        "name": "example-qd-detr-clip-only",
+                        "checkpoint_id": "example-checkpoint-id",
+                        "feature_version": "example-feature-version"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Caller credentials invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request, unsupported query or missing verified English query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Model/cache/upstream unavailable, or all candidates failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Total search deadline exceeded with no useful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Forward caller context; never replace with admin credentials."
+      },
+      "SessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "scenesearch_jwt",
+        "description": "Match the legacy session transport. Anonymous mode is loopback-only and must honor upstream policy."
+      }
+    },
+    "schemas": {
+      "SearchFilters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "dataset": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "video_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "weather": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "timeofday": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "scene": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "objects_any": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "objects_all": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "behaviors": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "min_object_counts": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "time_range_s": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "number",
+              "minimum": 0
+            },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "required": []
+      },
+      "TemporalSearchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "query_language": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "en",
+              "vi"
+            ],
+            "default": "auto"
+          },
+          "grounding_query": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "Optional caller-verified English query. Does not replace the legacy retrieval query."
+          },
+          "candidate_video_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 10
+          },
+          "moments_per_video": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "default": 3
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 10
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SearchFilters",
+            "default": {}
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "SceneEvidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "scene_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ts_start_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "ts_end_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "thumbnail_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "scene_id",
+          "ts_start_s",
+          "ts_end_s",
+          "thumbnail_url"
+        ]
+      },
+      "TemporalMoment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "moment_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ts_start_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "ts_end_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "grounding_score": {
+            "type": "number",
+            "description": "Raw model ranking score, not a calibrated probability."
+          },
+          "source": {
+            "type": "string",
+            "const": "temporal_grounding"
+          },
+          "thumbnail_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "moment_id",
+          "ts_start_s",
+          "ts_end_s",
+          "grounding_score",
+          "source",
+          "thumbnail_url"
+        ]
+      },
+      "Playback": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "full_video",
+              "subclip",
+              "unavailable"
+            ]
+          },
+          "origin_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "duration_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "privacy_state": {
+            "type": "string",
+            "enum": [
+              "source_preserving",
+              "anonymized_verified",
+              "unknown"
+            ]
+          }
+        },
+        "required": [
+          "url",
+          "kind",
+          "origin_s",
+          "duration_s",
+          "privacy_state"
+        ]
+      },
+      "TemporalVideoResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "video_duration_s": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "retrieval_rank": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "retrieval_score": {
+            "type": "number"
+          },
+          "evidence_scenes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SceneEvidence"
+            },
+            "minItems": 1
+          },
+          "moments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemporalMoment"
+            },
+            "minItems": 1,
+            "maxItems": 5
+          },
+          "playback": {
+            "$ref": "#/components/schemas/Playback"
+          }
+        },
+        "required": [
+          "video_id",
+          "video_duration_s",
+          "retrieval_rank",
+          "retrieval_score",
+          "evidence_scenes",
+          "moments",
+          "playback"
+        ]
+      },
+      "Warning": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "video_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "video_id"
+        ]
+      },
+      "TemporalSearchResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "type": "string",
+            "const": "0.1.0"
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "no_match"
+            ]
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "original": {
+                "type": "string",
+                "minLength": 1
+              },
+              "retrieval_text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "grounding_text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "grounding_language": {
+                "type": "string",
+                "const": "en"
+              },
+              "translation_source": {
+                "type": "string",
+                "enum": [
+                  "as_provided",
+                  "user_supplied",
+                  "translated"
+                ]
+              }
+            },
+            "required": [
+              "original",
+              "retrieval_text",
+              "grounding_text",
+              "grounding_language",
+              "translation_source"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "const": "candidate_videos_only"
+          },
+          "retrieval": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "legacy-api",
+                  "qdrant-readonly"
+                ]
+              },
+              "scene_count_scope": {
+                "type": "string",
+                "enum": [
+                  "returned_matched_moments",
+                  "raw_ann"
+                ]
+              },
+              "raw_ann_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "upstream_degraded": {
+                "type": "boolean"
+              },
+              "upstream_exhaustive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "provider",
+              "scene_count_scope",
+              "raw_ann_count",
+              "truncated",
+              "upstream_degraded",
+              "upstream_exhaustive"
+            ]
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "candidate_scenes_observed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "candidate_videos_received": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "candidate_videos_processed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "candidate_videos_skipped": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "returned_videos": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "candidate_scenes_observed",
+              "candidate_videos_received",
+              "candidate_videos_processed",
+              "candidate_videos_skipped",
+              "returned_videos"
+            ]
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemporalVideoResult"
+            },
+            "maxItems": 20
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            }
+          },
+          "timings_ms": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "total": {
+                "type": "number",
+                "minimum": 0
+              },
+              "retrieval": {
+                "type": "number",
+                "minimum": 0
+              },
+              "query_encoding": {
+                "type": "number",
+                "minimum": 0
+              },
+              "feature_read": {
+                "type": "number",
+                "minimum": 0
+              },
+              "grounding": {
+                "type": "number",
+                "minimum": 0
+              },
+              "postprocess": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "total",
+              "retrieval",
+              "query_encoding",
+              "feature_read",
+              "grounding",
+              "postprocess"
+            ]
+          },
+          "model": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "checkpoint_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "feature_version": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "name",
+              "checkpoint_id",
+              "feature_version"
+            ]
+          }
+        },
+        "required": [
+          "contract_version",
+          "request_id",
+          "status",
+          "query",
+          "scope",
+          "retrieval",
+          "counts",
+          "results",
+          "warnings",
+          "timings_ms",
+          "model"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "retryable": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "retryable"
+            ]
+          }
+        },
+        "required": [
+          "request_id",
+          "error"
+        ]
+      },
+      "HealthResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "const": "temporal-search"
+          },
+          "contract_version": {
+            "type": "string",
+            "const": "0.1.0"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "legacy_api_reachable": {
+            "type": "boolean"
+          },
+          "grounder_ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "service",
+          "contract_version",
+          "ready",
+          "legacy_api_reachable",
+          "grounder_ready"
+        ]
+      }
+    }
+  }
+}
