@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Xem lại kết quả checkpoint</title>
+<style>
+body{font:16px system-ui;max-width:1100px;margin:28px auto;padding:0 16px;color:#17222b;background:#f6f8fa}
+main{padding:20px;background:white;border:1px solid #ccd5df;border-radius:10px}
+select{font:inherit;padding:8px;max-width:100%;margin:6px 0}#query{width:100%}video{width:100%;max-height:560px;background:#111}
+button{font:inherit;padding:8px;margin:4px;cursor:pointer}table{width:100%;border-collapse:collapse}td,th{text-align:left;border-bottom:1px solid #ddd;padding:10px}
+.notice{padding:12px;background:#fff4d8;border-left:5px solid #9e6500}#status{min-height:1.5em}
+</style>
+<h1>Xem lại kết quả checkpoint</h1>
+<p class="notice">Kết quả định vị khi đã cho sẵn video mục tiêu. Đây là công cụ kiểm tra thử nghiệm nhóm B, chưa phải luồng tìm kiếm temporal trong ứng dụng. Điểm model chưa được hiệu chỉnh thành xác suất đúng.</p>
+<main>
+<label>Tập dữ liệu <select id="split"><option value="all">Tất cả</option><option value="validation">Validation</option><option value="test">Test</option></select></label>
+<label>Quan hệ <select id="relation"><option value="all">Tất cả</option><option value="positive">Có sự kiện</option><option value="negative_for_target_video">Không có sự kiện</option></select></label>
+<label>Query <select id="query"></select></label>
+<p id="query-text"></p><p id="video-info"></p>
+<video id="player" controls preload="metadata"></video>
+<p id="status" role="status"></p>
+<table><thead><tr><th>Nguồn đoạn</th><th>Phát đoạn (giây)</th><th>Điểm</th><th>IoU với nhãn</th></tr></thead><tbody id="moments"></tbody></table>
+<p>Bấm khoảng thời gian để phát và tự dừng ở cuối đoạn. Nhãn âm không có khoảng đúng để phát. Luồng cũ chỉ có đoạn để đối chiếu khi lấy được video mục tiêu trong top 20.</p>
+</main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const data=JSON.parse(document.getElementById('data').textContent);
+const player=document.getElementById('player');
+const status=document.getElementById('status');
+const picker=document.getElementById('query');
+let stopAt=null,playRequest=0;
+function playWindow(start,end){
+ const request=++playRequest;stopAt=end;
+ const play=()=>{if(request!==playRequest)return;player.currentTime=start;player.play().catch(error=>{status.textContent='Không phát được video: '+error.message;});};
+ status.textContent='Đang phát '+start.toFixed(2)+'–'+end.toFixed(2)+' giây.';
+ if(player.readyState>=1)play();else player.addEventListener('loadedmetadata',play,{once:true});
+}
+player.addEventListener('timeupdate',()=>{if(stopAt!==null&&player.currentTime>=stopAt){player.pause();stopAt=null;status.textContent='Đã đến cuối đoạn.';}});
+player.addEventListener('error',()=>{status.textContent='Không tải được video. Kiểm tra API localhost:8000 và Docker.';});
+function addMoment(name,windows,score,iou){
+ const tr=document.createElement('tr');
+ for(const value of [name,null,score==null?'—':score.toFixed(4),iou==null?'—':iou.toFixed(3)]){
+  const td=document.createElement('td');
+  if(value!==null)td.textContent=value;
+  else if(!windows.length)td.textContent='Không có đoạn';
+  else for(const [start,end] of windows){const button=document.createElement('button');button.textContent=start.toFixed(2)+'–'+end.toFixed(2);button.addEventListener('click',()=>playWindow(start,end));td.append(button);}
+  tr.append(td);
+ }
+ document.getElementById('moments').append(tr);
+}
+function render(){
+ player.pause();stopAt=null;playRequest++;
+ const row=data.rows.find(row=>row.query_id===picker.value);
+ document.getElementById('moments').replaceChildren();
+ if(!row){player.removeAttribute('src');player.load();document.getElementById('query-text').textContent='Không có query phù hợp bộ lọc.';document.getElementById('video-info').textContent='';status.textContent='';return;}
+ document.getElementById('query-text').textContent=row.query_vi+' ('+row.query+')';
+ document.getElementById('video-info').textContent=row.split+' · Video '+row.video_id+' · '+row.duration_s.toFixed(2)+' giây · Hạng video mục tiêu trong luồng cũ: '+(row.legacy_rank??'không có trong top 20');
+ if(player.getAttribute('src')!==row.media_url)player.src=row.media_url;
+ status.textContent='Chọn một khoảng thời gian để phát.';
+ addMoment('Nhãn đã duyệt',row.truth,null,null);
+ addMoment('Đoạn chính của luồng cũ',row.legacy_window?[row.legacy_window]:[],null,row.legacy_iou);
+ for(const model of row.models)addMoment(model.model,[model.window.slice(0,2)],model.window[2],model.iou);
+}
+function refresh(){
+ picker.replaceChildren();
+ const split=document.getElementById('split').value,relation=document.getElementById('relation').value;
+ for(const row of data.rows.filter(row=>(split==='all'||row.split===split)&&(relation==='all'||row.relation===relation))){
+  const option=document.createElement('option');option.value=row.query_id;option.textContent=row.query_id+' · '+row.query_vi;picker.append(option);
+ }
+ render();
+}
+picker.addEventListener('change',render);
+document.getElementById('split').addEventListener('change',refresh);
+document.getElementById('relation').addEventListener('change',refresh);
+refresh();
+</script>
+</html>

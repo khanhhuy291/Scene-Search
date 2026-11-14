@@ -6,6 +6,15 @@ Ngày thực hiện theo múi giờ Asia/Saigon: 14/11/2026.
 working tree hiện tại, gồm cả những thay đổi chưa commit đã có trước nhiệm vụ này.
 Nhánh temporal chưa có API chạy thật, model, Docker image hoặc giao diện.
 
+Cập nhật nghiên cứu tiếp theo nằm ở [RESEARCH_STATUS.md](RESEARCH_STATUS.md).
+Đã có runner checkpoint CPU và model thử nghiệm riêng; câu trên mô tả mốc thiết
+kế nhóm A, không mô tả rằng nhóm B chưa chạy gì.
+Pilot 20 nhãn đã được người dùng duyệt và đánh giá tại
+[REVIEWED_PILOT_RESULTS.md](REVIEWED_PILOT_RESULTS.md). Bộ 100 yêu cầu tiếp theo
+và trang duyệt từng phiên ở [EXPANSION_REVIEW.md](EXPANSION_REVIEW.md).
+Cả bộ mở rộng đã được duyệt; nhóm B hoàn tất đánh giá 120 cặp và checkpoint CPU
+tại [REVIEWED_EXPANSION_RESULTS.md](REVIEWED_EXPANSION_RESULTS.md).
+
 ## Sản phẩm của ba nhiệm vụ
 
 | Nhiệm vụ | Sản phẩm | Trạng thái |
@@ -58,8 +67,8 @@ Không khởi động lại service, reindex, migrate hoặc tạo tài khoản.
 ## Phần còn cần xác nhận
 
 - Benchmark độ trễ có kiểm soát và suite backend đầy đủ; response runtime mẫu đã có.
-- Khả năng nạp checkpoint và tài nguyên sử dụng, thuộc B5–B6.
-- Media nào có thể dùng làm nguồn đặc trưng với timeline đầy đủ, thuộc B6/C7.
+- GPU và độ trễ end-to-end vẫn chưa đo; checkpoint CPU và nguồn media đã kiểm ở B5–B6.
+- Cache đặc trưng theo timeline đầy đủ để phục vụ, thuộc C7.
 - Chất lượng/latency của nhánh mới và lợi ích fine-tune, thuộc E13–E14.
 
 Hồ sơ này hoàn thành phần khảo sát nguồn, thiết kế và baseline live mẫu của nhóm A.

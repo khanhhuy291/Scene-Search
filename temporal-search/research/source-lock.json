@@ -1,0 +1,91 @@
+{
+  "purpose": "Group B research only; no production search or full training",
+  "legacy_base_image": {
+    "tag": "scenesearch-local-embedding",
+    "image_id": "sha256:75ae37e44a1eb9523e4db6f54ac6044af7b31d830ca86ff761756329548088d7",
+    "python": "3.11",
+    "torch": "2.15.0+cu132",
+    "note": "Reused immutable image in a separate CPU container; no changes to running containers or installed image."
+  },
+  "code": {
+    "lighthouse": {
+      "url": "https://github.com/line/lighthouse",
+      "commit": "9b04316efe436d0cd4082e565e22b75f5f8bdb98",
+      "local_path": "data/research/lighthouse"
+    },
+    "openai_clip": {
+      "url": "https://github.com/openai/CLIP",
+      "commit": "d05afc436d78f1c48dc0dbf8e5980a9d471f35f6",
+      "local_path": "data/research/openai-clip"
+    }
+  },
+  "survey_repositories": [
+    {
+      "repository": "https://github.com/jayleicn/moment_detr",
+      "commit": "b7e553ac3b0c898ee6b85e03ee507c064eab89ca"
+    },
+    {
+      "repository": "https://github.com/wjun0830/QD-DETR",
+      "commit": "f8628f79f7c651b586300b142dbe9b85e43857cc"
+    },
+    {
+      "repository": "https://github.com/wjun0830/CGDETR",
+      "commit": "212b2e49a0893512930d63b9294a8c066347e606"
+    },
+    {
+      "repository": "https://github.com/showlab/UniVTG",
+      "commit": "32659ac7aeba21742a63274f30eba785fc57e247"
+    },
+    {
+      "repository": "https://github.com/Zhuo-Cao/FlashVTG",
+      "commit": "25b95916feed900038fa762985c196ee14f16c59"
+    }
+  ],
+  "extra_runtime_packages": {
+    "easydict": "1.13",
+    "einops": "0.8.1",
+    "imageio-ffmpeg": "0.6.0"
+  },
+  "weights": [
+    {
+      "name": "ViT-B-32.pt",
+      "url": "https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt",
+      "published_checksum": "sha256:40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af",
+      "sha256": "40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af",
+      "bytes": 353976522
+    },
+    {
+      "name": "author_qd_detr_clip.ckpt",
+      "url": "https://raw.githubusercontent.com/wjun0830/QD-DETR/f8628f79f7c651b586300b142dbe9b85e43857cc/run_on_video/qd_detr_ckpt/model_best.ckpt",
+      "published_checksum": "git-blob:6c2d73efb1e8e8816e5fc1c95fa918c00b5bd087",
+      "sha256": "504ce581591bd38699517acb51ef78af8a1011a0605780666653adfa3739ff43",
+      "bytes": 83998049
+    },
+    {
+      "name": "author_cg_detr_clip.ckpt",
+      "url": "https://media.githubusercontent.com/media/wjun0830/CGDETR/212b2e49a0893512930d63b9294a8c066347e606/run_on_video/CLIP_ckpt/qvhighlights_onlyCLIP/model_best.ckpt",
+      "published_checksum": "sha256:d51eef06e8908a84f8000f1c2b70a9d7f4b6bdd570d4b5b6a97bcdbf90e66f2c",
+      "sha256": "d51eef06e8908a84f8000f1c2b70a9d7f4b6bdd570d4b5b6a97bcdbf90e66f2c",
+      "bytes": 143473245
+    }
+  ],
+  "preprocessing": {
+    "clip": "ViT-B/32",
+    "clip_length_s": 2,
+    "image_size": 224,
+    "image_batch_size": 1,
+    "video_features": "L2 normalized 512-d CLIP plus two temporal coordinates",
+    "text_features": "L2 normalized token-level final hidden states including valid special tokens",
+    "display_rotation": "applied before resizing and center crop",
+    "max_video_tokens": 75,
+    "max_query_tokens": 32
+  },
+  "execution": {
+    "device": "cpu",
+    "cpus": 2,
+    "memory": "1g",
+    "memory_swap": "2g",
+    "network": "none",
+    "gpu_experiment": "not_run_automatic_approval_rejected_co_resident_gpu_memory_risk"
+  }
+}

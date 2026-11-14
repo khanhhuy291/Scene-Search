@@ -1,0 +1,1708 @@
+{
+  "curation_method": "assistant visual inspection of 20 source frames per video at approximately 2-second intervals; no retrieval or grounding predictions used",
+  "limitations": "Provisional observations only. Full-video human review must verify event presence, all occurrences and exact boundaries. Negative controls are deliberately simple and do not measure hard-negative performance.",
+  "videos": [
+    {
+      "video_index": 0,
+      "note": "Daylight residential street; oncoming dark vehicles, stop sign and cars at right curb.",
+      "items": [
+        {
+          "query": "A dark SUV passes the dashcam on a tree-lined residential street.",
+          "query_vi": "Một SUV màu tối đi qua camera hành trình trên đường khu dân cư có hàng cây.",
+          "windows": [
+            [
+              2,
+              4
+            ]
+          ],
+          "evidence": [
+            3
+          ]
+        },
+        {
+          "query": "A dark sedan passes close to the left side of the dashcam.",
+          "query_vi": "Một sedan màu tối đi qua sát bên trái camera hành trình.",
+          "windows": [
+            [
+              12,
+              14
+            ]
+          ],
+          "evidence": [
+            13
+          ]
+        },
+        {
+          "query": "A red stop sign is visible at a residential intersection.",
+          "query_vi": "Có biển STOP màu đỏ tại giao lộ trong khu dân cư.",
+          "windows": [
+            [
+              16,
+              22
+            ]
+          ],
+          "evidence": [
+            17,
+            19,
+            21
+          ]
+        },
+        {
+          "query": "Parked cars line the right curb in front of houses.",
+          "query_vi": "Các xe đỗ dọc lề phải phía trước những ngôi nhà.",
+          "windows": [
+            [
+              30,
+              40
+            ]
+          ],
+          "evidence": [
+            31,
+            33,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Snow covers the residential road and its sidewalks.",
+          "query_vi": "Tuyết phủ kín đường và vỉa hè trong khu dân cư.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "0a8edc24-6efe-455a-9e63-3e7692e355de"
+    },
+    {
+      "video_index": 1,
+      "note": "Sunny urban block; red van ahead, stops at crosswalk, two pedestrians, crossing white car.",
+      "items": [
+        {
+          "query": "The dashcam follows a red van along a sunny city street.",
+          "query_vi": "Camera hành trình đi theo một xe van màu đỏ trên phố có nắng.",
+          "windows": [
+            [
+              2,
+              20
+            ]
+          ],
+          "evidence": [
+            3,
+            7,
+            11,
+            15,
+            19
+          ]
+        },
+        {
+          "query": "Two pedestrians cross directly in front of the stopped dashcam.",
+          "query_vi": "Hai người đi bộ băng qua ngay phía trước camera hành trình đang dừng.",
+          "windows": [
+            [
+              24,
+              31
+            ]
+          ],
+          "evidence": [
+            25,
+            27,
+            29,
+            31
+          ]
+        },
+        {
+          "query": "A white sedan crosses the intersection ahead of the dashcam.",
+          "query_vi": "Một sedan màu trắng đi ngang giao lộ phía trước camera hành trình.",
+          "windows": [
+            [
+              33,
+              38
+            ]
+          ],
+          "evidence": [
+            33,
+            35,
+            37
+          ]
+        },
+        {
+          "query": "The dashcam waits behind a marked crosswalk at a city intersection.",
+          "query_vi": "Camera hành trình dừng chờ phía sau vạch sang đường tại giao lộ đô thị.",
+          "windows": [
+            [
+              21,
+              40
+            ]
+          ],
+          "evidence": [
+            23,
+            27,
+            31,
+            35,
+            39
+          ]
+        },
+        {
+          "query": "Only streetlights illuminate the road during nighttime driving.",
+          "query_vi": "Chỉ có đèn đường chiếu sáng mặt đường khi xe chạy ban đêm.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "d472817d-885a-41b8-b9da-047a925dab0a"
+    },
+    {
+      "video_index": 2,
+      "note": "Sunny urban/residential street; right turn, parked vehicles both sides, dark car ahead and stop signs.",
+      "items": [
+        {
+          "query": "The dashcam turns right into a street lined with parked cars.",
+          "query_vi": "Camera hành trình rẽ phải vào con đường có xe đỗ dọc hai bên.",
+          "windows": [
+            [
+              4,
+              12
+            ]
+          ],
+          "evidence": [
+            5,
+            7,
+            9,
+            11
+          ]
+        },
+        {
+          "query": "Parked vehicles occupy both sides of the narrow city street.",
+          "query_vi": "Các xe đỗ chiếm cả hai bên con phố hẹp.",
+          "windows": [
+            [
+              12,
+              40
+            ]
+          ],
+          "evidence": [
+            13,
+            17,
+            21,
+            25,
+            29,
+            33,
+            37
+          ]
+        },
+        {
+          "query": "A black sedan drives ahead toward the end of the block.",
+          "query_vi": "Một sedan màu đen chạy phía trước về cuối dãy phố.",
+          "windows": [
+            [
+              28,
+              40
+            ]
+          ],
+          "evidence": [
+            29,
+            31,
+            33,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Red stop signs mark the intersection at the end of the street.",
+          "query_vi": "Các biển STOP màu đỏ đánh dấu giao lộ ở cuối phố.",
+          "windows": [
+            [
+              34,
+              40
+            ]
+          ],
+          "evidence": [
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Deep snow covers the street between the parked vehicles.",
+          "query_vi": "Tuyết dày phủ mặt đường giữa các xe đang đỗ.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "7669320b-926d-4c62-a6fb-a3441ea18eef"
+    },
+    {
+      "video_index": 3,
+      "note": "Night road with green signals, light sedan, rightward turn and darker residential road.",
+      "items": [
+        {
+          "query": "Green traffic signals are visible above the dark roadway.",
+          "query_vi": "Có các đèn giao thông màu xanh phía trên con đường tối.",
+          "windows": [
+            [
+              0,
+              3
+            ]
+          ],
+          "evidence": [
+            1
+          ]
+        },
+        {
+          "query": "A light-colored sedan travels ahead on a curving road at night.",
+          "query_vi": "Một sedan sáng màu chạy phía trước trên đường cong vào ban đêm.",
+          "windows": [
+            [
+              2,
+              14
+            ]
+          ],
+          "evidence": [
+            3,
+            5,
+            7,
+            9,
+            11,
+            13
+          ]
+        },
+        {
+          "query": "The dashcam turns into a darker residential street at night.",
+          "query_vi": "Camera hành trình rẽ vào con đường khu dân cư tối hơn vào ban đêm.",
+          "windows": [
+            [
+              24,
+              34
+            ]
+          ],
+          "evidence": [
+            25,
+            27,
+            29,
+            31,
+            33
+          ]
+        },
+        {
+          "query": "Houses are visible beside the narrow road after the turn.",
+          "query_vi": "Có các ngôi nhà cạnh con đường hẹp sau khi xe rẽ.",
+          "windows": [
+            [
+              32,
+              40
+            ]
+          ],
+          "evidence": [
+            33,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Bright sunlight illuminates this road and the surrounding houses.",
+          "query_vi": "Ánh nắng sáng chiếu lên con đường này và các ngôi nhà xung quanh.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "dceb7b86-1ca2-43e6-997a-eaef40ffd3ef"
+    },
+    {
+      "video_index": 4,
+      "note": "Night city intersections; first red light, green phase, second red light beside shopfronts.",
+      "items": [
+        {
+          "query": "The dashcam waits at a red signal before a nighttime intersection.",
+          "query_vi": "Camera hành trình chờ đèn đỏ trước giao lộ vào ban đêm.",
+          "windows": [
+            [
+              0,
+              8
+            ]
+          ],
+          "evidence": [
+            1,
+            3,
+            5,
+            7
+          ]
+        },
+        {
+          "query": "The traffic light turns green before the dashcam enters the intersection.",
+          "query_vi": "Đèn giao thông chuyển xanh trước khi camera hành trình đi vào giao lộ.",
+          "windows": [
+            [
+              8,
+              15
+            ]
+          ],
+          "evidence": [
+            9,
+            11,
+            13,
+            15
+          ]
+        },
+        {
+          "query": "Illuminated shopfronts line the right side of the nighttime street.",
+          "query_vi": "Các cửa hàng sáng đèn nằm dọc bên phải con phố ban đêm.",
+          "windows": [
+            [
+              16,
+              40
+            ]
+          ],
+          "evidence": [
+            17,
+            19,
+            21,
+            23,
+            29,
+            35,
+            39
+          ]
+        },
+        {
+          "query": "The vehicle stops at another red light farther along the city street.",
+          "query_vi": "Xe dừng ở một đèn đỏ khác sau khi đi tiếp trên phố.",
+          "windows": [
+            [
+              22,
+              40
+            ]
+          ],
+          "evidence": [
+            23,
+            25,
+            29,
+            33,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Sunlight brightly illuminates the intersection and the shopfronts.",
+          "query_vi": "Ánh nắng chiếu sáng rõ giao lộ và các cửa hàng.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "29c83e60-f115-4f81-9638-6e340a57b240"
+    },
+    {
+      "video_index": 5,
+      "note": "Sunny boulevard; red tractor-trailer, orange-clad rider, crosswalks and a black van ahead.",
+      "items": [
+        {
+          "query": "A motorcyclist wearing orange rides near the right edge of the lane.",
+          "query_vi": "Một người đi xe máy mặc áo cam chạy gần mép phải của làn đường.",
+          "windows": [
+            [
+              14,
+              18
+            ]
+          ],
+          "evidence": [
+            15,
+            17
+          ]
+        },
+        {
+          "query": "A red tractor-trailer passes in the oncoming lanes.",
+          "query_vi": "Một xe đầu kéo màu đỏ đi qua ở các làn ngược chiều.",
+          "windows": [
+            [
+              6,
+              11
+            ]
+          ],
+          "evidence": [
+            7,
+            9,
+            11
+          ]
+        },
+        {
+          "query": "The dashcam follows a black van along the divided road.",
+          "query_vi": "Camera hành trình đi theo xe van màu đen trên đường có dải phân cách.",
+          "windows": [
+            [
+              20,
+              38
+            ]
+          ],
+          "evidence": [
+            21,
+            25,
+            29,
+            33,
+            37
+          ]
+        },
+        {
+          "query": "The dashcam crosses broad zebra markings in daylight.",
+          "query_vi": "Camera hành trình đi qua các vạch sang đường rộng vào ban ngày.",
+          "windows": [
+            [
+              6,
+              9
+            ],
+            [
+              26,
+              29
+            ]
+          ],
+          "evidence": [
+            7,
+            9,
+            27,
+            29
+          ]
+        },
+        {
+          "query": "Snow covers the traffic lanes and the central divider.",
+          "query_vi": "Tuyết phủ kín các làn đường và dải phân cách giữa.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "3afb5ffb-f5d3-4b6a-8136-f0bb3c7b4464"
+    },
+    {
+      "video_index": 6,
+      "note": "Daylit road, white hatchback and sedan, queue at red signal then green and onward.",
+      "items": [
+        {
+          "query": "A white hatchback crosses the zebra markings ahead.",
+          "query_vi": "Một hatchback màu trắng đi qua vạch sang đường phía trước.",
+          "windows": [
+            [
+              2,
+              8
+            ]
+          ],
+          "evidence": [
+            3,
+            5,
+            7
+          ]
+        },
+        {
+          "query": "A white sedan passes close along the left side of the dashcam.",
+          "query_vi": "Một sedan màu trắng đi qua sát bên trái camera hành trình.",
+          "windows": [
+            [
+              10,
+              17
+            ]
+          ],
+          "evidence": [
+            11,
+            13,
+            15,
+            17
+          ]
+        },
+        {
+          "query": "The dashcam waits behind dark cars at a red traffic light.",
+          "query_vi": "Camera hành trình chờ phía sau các xe màu tối tại đèn đỏ.",
+          "windows": [
+            [
+              22,
+              33
+            ]
+          ],
+          "evidence": [
+            23,
+            25,
+            27,
+            29,
+            31,
+            33
+          ]
+        },
+        {
+          "query": "The signal turns green and the vehicles ahead move through the intersection.",
+          "query_vi": "Đèn chuyển xanh và các xe phía trước đi qua giao lộ.",
+          "windows": [
+            [
+              34,
+              40
+            ]
+          ],
+          "evidence": [
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "The vehicles travel along an unlit road at night.",
+          "query_vi": "Các xe chạy trên con đường không được chiếu sáng vào ban đêm.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "06158b70-2772-42f0-bda1-1de9b8238d07"
+    },
+    {
+      "video_index": 7,
+      "note": "Busy sunny avenue, white bus, yellow utility truck and many pedestrians at later crosswalk.",
+      "items": [
+        {
+          "query": "A white city bus travels directly ahead of the dashcam.",
+          "query_vi": "Một xe buýt đô thị màu trắng chạy ngay phía trước camera hành trình.",
+          "windows": [
+            [
+              0,
+              12
+            ]
+          ],
+          "evidence": [
+            1,
+            3,
+            5,
+            7,
+            9,
+            11
+          ]
+        },
+        {
+          "query": "A yellow work truck is visible along the right side of the avenue.",
+          "query_vi": "Có xe công trình màu vàng dọc bên phải đại lộ.",
+          "windows": [
+            [
+              14,
+              20
+            ]
+          ],
+          "evidence": [
+            15,
+            17,
+            19
+          ]
+        },
+        {
+          "query": "The dashcam waits at a red light facing a wide zebra crossing.",
+          "query_vi": "Camera hành trình chờ đèn đỏ trước vạch sang đường rộng.",
+          "windows": [
+            [
+              22,
+              40
+            ]
+          ],
+          "evidence": [
+            23,
+            25,
+            29,
+            33,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Several pedestrians cross directly in front of the stopped vehicle.",
+          "query_vi": "Nhiều người đi bộ băng qua ngay trước chiếc xe đang dừng.",
+          "windows": [
+            [
+              27,
+              40
+            ]
+          ],
+          "evidence": [
+            27,
+            29,
+            31,
+            33,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Deep snow covers the busy avenue and its pedestrian crossing.",
+          "query_vi": "Tuyết dày phủ đại lộ đông đúc và vạch sang đường.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "8ffa7a0a-3862-4d92-b2b8-bb2bc96007d5"
+    },
+    {
+      "video_index": 8,
+      "note": "Snowbanks at dusk, exit ramp ending at stop sign, crossing traffic at junction.",
+      "items": [
+        {
+          "query": "Snowbanks line the road beside bare trees at dusk.",
+          "query_vi": "Các ụ tuyết nằm dọc đường cạnh những cây trụi lá lúc chạng vạng.",
+          "windows": [
+            [
+              0,
+              40
+            ]
+          ],
+          "evidence": [
+            1,
+            9,
+            17,
+            25,
+            33,
+            39
+          ]
+        },
+        {
+          "query": "The dashcam takes a narrow exit ramp to the right.",
+          "query_vi": "Camera hành trình đi vào nhánh ra hẹp ở bên phải.",
+          "windows": [
+            [
+              10,
+              18
+            ]
+          ],
+          "evidence": [
+            11,
+            13,
+            15,
+            17
+          ]
+        },
+        {
+          "query": "A red stop sign stands at the end of the snowy exit ramp.",
+          "query_vi": "Biển STOP màu đỏ nằm ở cuối nhánh ra có tuyết bên đường.",
+          "windows": [
+            [
+              16,
+              22
+            ]
+          ],
+          "evidence": [
+            17,
+            19,
+            21
+          ]
+        },
+        {
+          "query": "Vehicles cross in front of the dashcam while it waits at the junction.",
+          "query_vi": "Các xe chạy ngang phía trước khi camera hành trình chờ ở chỗ giao nhau.",
+          "windows": [
+            [
+              22,
+              28
+            ],
+            [
+              33,
+              40
+            ]
+          ],
+          "evidence": [
+            23,
+            25,
+            27,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "The dashcam drives through a long illuminated tunnel.",
+          "query_vi": "Camera hành trình chạy qua một đường hầm dài được chiếu sáng.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "28dc70ee-401a-48ec-abd9-30419f0ad8bf"
+    },
+    {
+      "video_index": 9,
+      "note": "Daylight industrial approach, roof-rack SUV, left-side pedestrian and crossing taxi/fire engine.",
+      "items": [
+        {
+          "query": "A dark SUV with a roof rack travels ahead beside an industrial building.",
+          "query_vi": "Một SUV màu tối có giá nóc chạy phía trước cạnh tòa nhà công nghiệp.",
+          "windows": [
+            [
+              0,
+              16
+            ]
+          ],
+          "evidence": [
+            1,
+            3,
+            5,
+            9,
+            13,
+            15
+          ]
+        },
+        {
+          "query": "A pedestrian stands beside the concrete wall on the left.",
+          "query_vi": "Một người đi bộ đứng cạnh bức tường bê tông bên trái.",
+          "windows": [
+            [
+              12,
+              14
+            ]
+          ],
+          "evidence": [
+            13
+          ]
+        },
+        {
+          "query": "A green taxi crosses the intersection ahead of the waiting dashcam.",
+          "query_vi": "Một taxi màu xanh chạy ngang giao lộ trước camera hành trình đang chờ.",
+          "windows": [
+            [
+              28,
+              31
+            ]
+          ],
+          "evidence": [
+            29,
+            31
+          ]
+        },
+        {
+          "query": "A red fire engine crosses the intersection in front of the dashcam.",
+          "query_vi": "Một xe cứu hỏa màu đỏ chạy ngang giao lộ trước camera hành trình.",
+          "windows": [
+            [
+              36,
+              39
+            ]
+          ],
+          "evidence": [
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Heavy snow covers the industrial road and the vehicles ahead.",
+          "query_vi": "Tuyết dày phủ con đường công nghiệp và những xe phía trước.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "4b6ad66b-8af6-4a39-a9df-b8c80e39ab39"
+    },
+    {
+      "video_index": 10,
+      "note": "Tree-lined road near sunset, oncoming cars, red signal and cross traffic.",
+      "items": [
+        {
+          "query": "An oncoming dark sedan passes on the left of the tree-lined road.",
+          "query_vi": "Một sedan màu tối ngược chiều đi qua bên trái đường có hàng cây.",
+          "windows": [
+            [
+              2,
+              4
+            ]
+          ],
+          "evidence": [
+            3
+          ]
+        },
+        {
+          "query": "A light-colored vehicle passes close to the left side of the dashcam.",
+          "query_vi": "Một xe sáng màu đi qua sát bên trái camera hành trình.",
+          "windows": [
+            [
+              12,
+              14
+            ]
+          ],
+          "evidence": [
+            13
+          ]
+        },
+        {
+          "query": "The dashcam waits at a red light behind a broad pedestrian crossing.",
+          "query_vi": "Camera hành trình chờ đèn đỏ phía sau vạch sang đường rộng.",
+          "windows": [
+            [
+              22,
+              40
+            ]
+          ],
+          "evidence": [
+            23,
+            25,
+            29,
+            33,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Cross traffic moves through the junction while the dashcam remains stopped.",
+          "query_vi": "Xe cộ chạy ngang qua chỗ giao nhau trong khi camera hành trình vẫn dừng.",
+          "windows": [
+            [
+              24,
+              40
+            ]
+          ],
+          "evidence": [
+            25,
+            27,
+            31,
+            33,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Snow covers the roadway and the broad pedestrian crossing.",
+          "query_vi": "Tuyết phủ mặt đường và vạch sang đường rộng.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "35c995a9-cb9e-4ccb-8d2a-63b58ce5eea6"
+    },
+    {
+      "video_index": 11,
+      "note": "Narrow night street, refuse truck, bicycle at lit doorway, stopped bus and yellow taxi at red.",
+      "items": [
+        {
+          "query": "A large refuse truck is visible beside the nighttime street.",
+          "query_vi": "Có xe thu gom rác lớn cạnh con phố ban đêm.",
+          "windows": [
+            [
+              2,
+              7
+            ]
+          ],
+          "evidence": [
+            3,
+            5,
+            7
+          ]
+        },
+        {
+          "query": "A bicycle stands on the left sidewalk beside a lit doorway.",
+          "query_vi": "Một xe đạp dựng trên vỉa hè bên trái cạnh cửa ra vào sáng đèn.",
+          "windows": [
+            [
+              6,
+              12
+            ]
+          ],
+          "evidence": [
+            7,
+            9,
+            11
+          ]
+        },
+        {
+          "query": "The dashcam passes a bus stopped on the right side of the street.",
+          "query_vi": "Camera hành trình đi qua xe buýt dừng bên phải phố.",
+          "windows": [
+            [
+              12,
+              17
+            ]
+          ],
+          "evidence": [
+            13,
+            15,
+            17
+          ]
+        },
+        {
+          "query": "A yellow taxi waits on the right at a red traffic light.",
+          "query_vi": "Một taxi màu vàng chờ bên phải tại đèn đỏ.",
+          "windows": [
+            [
+              30,
+              40
+            ]
+          ],
+          "evidence": [
+            31,
+            33,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Bright sunshine lights the street and a clear blue sky.",
+          "query_vi": "Nắng sáng chiếu lên con phố dưới bầu trời xanh quang đãng.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "f57ba0e7-d610-4515-b84f-d5b390b7ec79"
+    },
+    {
+      "video_index": 12,
+      "note": "Overcast residential intersections; dark SUV, stop markings and long wait opposite a white fence.",
+      "items": [
+        {
+          "query": "A dark SUV crosses the residential intersection ahead.",
+          "query_vi": "Một SUV màu tối đi ngang giao lộ khu dân cư phía trước.",
+          "windows": [
+            [
+              2,
+              6
+            ]
+          ],
+          "evidence": [
+            3,
+            5
+          ]
+        },
+        {
+          "query": "A stop sign and a painted STOP marking appear at the intersection.",
+          "query_vi": "Biển STOP và chữ STOP sơn trên đường xuất hiện tại giao lộ.",
+          "windows": [
+            [
+              6,
+              8
+            ]
+          ],
+          "evidence": [
+            7
+          ]
+        },
+        {
+          "query": "A white picket fence borders the corner house across the road.",
+          "query_vi": "Hàng rào trắng bao quanh ngôi nhà ở góc đường phía đối diện.",
+          "windows": [
+            [
+              18,
+              40
+            ]
+          ],
+          "evidence": [
+            19,
+            21,
+            25,
+            29,
+            33,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "The dashcam waits at a residential intersection facing a one-way sign.",
+          "query_vi": "Camera hành trình chờ tại giao lộ khu dân cư đối diện biển đường một chiều.",
+          "windows": [
+            [
+              22,
+              40
+            ]
+          ],
+          "evidence": [
+            23,
+            25,
+            29,
+            33,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Streetlights are the only illumination on this residential road at night.",
+          "query_vi": "Đèn đường là nguồn sáng duy nhất trên con đường khu dân cư này vào ban đêm.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "a0f9cb7e-b24b-4bad-9f68-8377e8e0ebf4"
+    },
+    {
+      "video_index": 13,
+      "note": "Night red minivan under green signals, then elevated steel bridge and stop at red.",
+      "items": [
+        {
+          "query": "A red minivan travels immediately ahead through the nighttime intersection.",
+          "query_vi": "Một xe minivan màu đỏ chạy ngay phía trước qua giao lộ ban đêm.",
+          "windows": [
+            [
+              0,
+              16
+            ]
+          ],
+          "evidence": [
+            1,
+            3,
+            5,
+            7,
+            9,
+            11,
+            13,
+            15
+          ]
+        },
+        {
+          "query": "Green traffic lights are visible as the dashcam follows the minivan.",
+          "query_vi": "Có đèn giao thông màu xanh khi camera hành trình đi theo xe minivan.",
+          "windows": [
+            [
+              0,
+              12
+            ]
+          ],
+          "evidence": [
+            1,
+            3,
+            5,
+            7,
+            9,
+            11
+          ]
+        },
+        {
+          "query": "An elevated steel structure spans the road ahead at night.",
+          "query_vi": "Một công trình thép trên cao bắc ngang con đường phía trước vào ban đêm.",
+          "windows": [
+            [
+              16,
+              40
+            ]
+          ],
+          "evidence": [
+            17,
+            19,
+            21,
+            25,
+            29,
+            33,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "The dashcam stops at red lights beneath the elevated structure.",
+          "query_vi": "Camera hành trình dừng tại đèn đỏ bên dưới công trình trên cao.",
+          "windows": [
+            [
+              24,
+              40
+            ]
+          ],
+          "evidence": [
+            25,
+            27,
+            29,
+            31,
+            33,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Snow covers the traffic lanes beneath the elevated structure.",
+          "query_vi": "Tuyết phủ các làn đường bên dưới công trình trên cao.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "11f39ca2-8d9c-4297-b6a5-9f6739640a2a"
+    },
+    {
+      "video_index": 14,
+      "note": "Night queue under illuminated curved structure, green phase and small flatbed truck on left.",
+      "items": [
+        {
+          "query": "Bright brake lights glow on the dark SUV directly ahead.",
+          "query_vi": "Đèn phanh sáng rõ trên SUV màu tối ngay phía trước.",
+          "windows": [
+            [
+              0,
+              6
+            ]
+          ],
+          "evidence": [
+            1,
+            3,
+            5
+          ]
+        },
+        {
+          "query": "An illuminated curved structure stretches above the left side of the road.",
+          "query_vi": "Một công trình cong được chiếu sáng kéo dài phía trên bên trái đường.",
+          "windows": [
+            [
+              0,
+              10
+            ]
+          ],
+          "evidence": [
+            1,
+            3,
+            5,
+            7,
+            9
+          ]
+        },
+        {
+          "query": "Vehicles move forward while green traffic lights are visible ahead.",
+          "query_vi": "Các xe đi tiếp khi có đèn giao thông màu xanh phía trước.",
+          "windows": [
+            [
+              6,
+              12
+            ]
+          ],
+          "evidence": [
+            7,
+            9,
+            11
+          ]
+        },
+        {
+          "query": "A small flatbed truck travels in the lane to the left.",
+          "query_vi": "Một xe tải thùng lửng nhỏ chạy ở làn bên trái.",
+          "windows": [
+            [
+              22,
+              40
+            ]
+          ],
+          "evidence": [
+            23,
+            25,
+            27,
+            29,
+            31,
+            33,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Bright daylight illuminates the queued vehicles and the curved structure.",
+          "query_vi": "Ánh sáng ban ngày chiếu rõ các xe xếp hàng và công trình cong.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "972f81e1-0695-4e01-a7db-11784e73525b"
+    },
+    {
+      "video_index": 15,
+      "note": "Daylit city street; white cargo van, pedestrian crossing, left turn and construction barriers.",
+      "items": [
+        {
+          "query": "The dashcam follows a white cargo van between rows of parked cars.",
+          "query_vi": "Camera hành trình đi theo xe van chở hàng màu trắng giữa hai hàng xe đỗ.",
+          "windows": [
+            [
+              0,
+              16
+            ]
+          ],
+          "evidence": [
+            1,
+            3,
+            5,
+            7,
+            9,
+            11,
+            13,
+            15
+          ]
+        },
+        {
+          "query": "Pedestrians cross at the intersection beside the white van.",
+          "query_vi": "Người đi bộ sang đường tại giao lộ cạnh xe van màu trắng.",
+          "windows": [
+            [
+              18,
+              24
+            ]
+          ],
+          "evidence": [
+            19,
+            21,
+            23
+          ]
+        },
+        {
+          "query": "The white van turns left at the broad city intersection.",
+          "query_vi": "Xe van màu trắng rẽ trái tại giao lộ đô thị rộng.",
+          "windows": [
+            [
+              20,
+              27
+            ]
+          ],
+          "evidence": [
+            21,
+            23,
+            25,
+            27
+          ]
+        },
+        {
+          "query": "Orange and white construction barriers line the right side of the road.",
+          "query_vi": "Các rào chắn công trường màu cam và trắng nằm dọc bên phải đường.",
+          "windows": [
+            [
+              26,
+              40
+            ]
+          ],
+          "evidence": [
+            27,
+            29,
+            31,
+            33,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "The dashcam drives through this street at night under artificial lights.",
+          "query_vi": "Camera hành trình chạy qua con phố này vào ban đêm dưới ánh sáng đèn.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "9c5f27b0-cd8b-4f13-95e9-9aba2e6f7e8d"
+    },
+    {
+      "video_index": 16,
+      "note": "Night residential street with parked cars, stop marking and cross traffic.",
+      "items": [
+        {
+          "query": "A dark vehicle ahead shows bright brake lights on a residential street at night.",
+          "query_vi": "Xe màu tối phía trước bật đèn phanh sáng trên đường khu dân cư vào ban đêm.",
+          "windows": [
+            [
+              8,
+              12
+            ]
+          ],
+          "evidence": [
+            9,
+            11
+          ]
+        },
+        {
+          "query": "The word STOP is painted across the lane at a night-time intersection.",
+          "query_vi": "Chữ STOP được sơn ngang làn đường tại giao lộ vào ban đêm.",
+          "windows": [
+            [
+              18,
+              20
+            ],
+            [
+              34,
+              36
+            ]
+          ],
+          "evidence": [
+            19,
+            35
+          ]
+        },
+        {
+          "query": "Light-colored cars cross in front of the dashcam at the intersection at night.",
+          "query_vi": "Các xe sáng màu đi ngang phía trước camera tại giao lộ vào ban đêm.",
+          "windows": [
+            [
+              20,
+              24
+            ]
+          ],
+          "evidence": [
+            21,
+            23
+          ]
+        },
+        {
+          "query": "Cars are parked along both sides of a narrow residential street lit by streetlights.",
+          "query_vi": "Xe đỗ dọc hai bên đường khu dân cư hẹp được chiếu sáng bởi đèn đường.",
+          "windows": [
+            [
+              0,
+              18
+            ],
+            [
+              28,
+              34
+            ]
+          ],
+          "evidence": [
+            1,
+            5,
+            9,
+            13,
+            17,
+            29,
+            31,
+            33
+          ]
+        },
+        {
+          "query": "Deep snow covers the parked cars and the residential street.",
+          "query_vi": "Tuyết dày phủ các xe đang đỗ và đường khu dân cư.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "6677f40b-db93-42a5-9578-4e92a1af1f13"
+    },
+    {
+      "video_index": 17,
+      "note": "Sunny city street, flowered median with red railing, red hatchback and traffic lights.",
+      "items": [
+        {
+          "query": "A red hatchback is directly ahead beside a median lined with flowers.",
+          "query_vi": "Một hatchback màu đỏ ở ngay phía trước cạnh dải phân cách trồng hoa.",
+          "windows": [
+            [
+              0,
+              16
+            ]
+          ],
+          "evidence": [
+            1,
+            5,
+            9,
+            13,
+            15
+          ]
+        },
+        {
+          "query": "A white commercial van travels alongside the dashcam on the right.",
+          "query_vi": "Một xe van thương mại màu trắng chạy cạnh camera hành trình ở bên phải.",
+          "windows": [
+            [
+              12,
+              20
+            ]
+          ],
+          "evidence": [
+            13,
+            15,
+            17,
+            19
+          ]
+        },
+        {
+          "query": "The dashcam approaches green traffic lights beside a tall pale building.",
+          "query_vi": "Camera tiến đến đèn giao thông xanh cạnh tòa nhà cao màu sáng.",
+          "windows": [
+            [
+              22,
+              26
+            ]
+          ],
+          "evidence": [
+            23,
+            25
+          ]
+        },
+        {
+          "query": "A dark sedan leads the dashcam past red railings and a red hatchback on the right.",
+          "query_vi": "Một sedan màu tối dẫn phía trước khi camera đi qua lan can đỏ và hatchback đỏ bên phải.",
+          "windows": [
+            [
+              28,
+              38
+            ]
+          ],
+          "evidence": [
+            29,
+            31,
+            33,
+            35,
+            37
+          ]
+        },
+        {
+          "query": "Heavy snowfall obscures the flowered median and the surrounding city buildings.",
+          "query_vi": "Tuyết rơi dày che khuất dải phân cách trồng hoa và các tòa nhà xung quanh.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "2bd9b8c0-4fad-4e54-a4bc-a4ca6338ea90"
+    },
+    {
+      "video_index": 18,
+      "note": "Sunny Manhattan street, white moving truck, taxis, pedestrians and a dark Jeep.",
+      "items": [
+        {
+          "query": "A large white moving truck is immediately to the right of the dashcam in city traffic.",
+          "query_vi": "Một xe tải chuyển nhà lớn màu trắng ở sát bên phải camera giữa dòng xe thành phố.",
+          "windows": [
+            [
+              0,
+              8
+            ]
+          ],
+          "evidence": [
+            1,
+            3,
+            5,
+            7
+          ]
+        },
+        {
+          "query": "A yellow taxi travels beside a dark sedan near the dashcam.",
+          "query_vi": "Một taxi màu vàng chạy cạnh sedan màu tối gần camera hành trình.",
+          "windows": [
+            [
+              0,
+              12
+            ]
+          ],
+          "evidence": [
+            1,
+            3,
+            5,
+            7,
+            9,
+            11
+          ]
+        },
+        {
+          "query": "Pedestrians cross the striped crosswalk in front of the corner building.",
+          "query_vi": "Người đi bộ băng qua vạch kẻ đường trước tòa nhà ở góc phố.",
+          "windows": [
+            [
+              10,
+              14
+            ]
+          ],
+          "evidence": [
+            11,
+            13
+          ]
+        },
+        {
+          "query": "A dark Jeep with a spare tire on the rear drives ahead near a city crosswalk.",
+          "query_vi": "Một xe Jeep màu tối có lốp dự phòng phía sau chạy phía trước gần vạch sang đường.",
+          "windows": [
+            [
+              30,
+              36
+            ]
+          ],
+          "evidence": [
+            31,
+            33,
+            35
+          ]
+        },
+        {
+          "query": "Snow blankets the city street beside the yellow taxis and tall buildings.",
+          "query_vi": "Tuyết phủ đường phố cạnh các taxi vàng và những tòa nhà cao tầng.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "0917c6a7-c671-4ecb-a6a8-dbab8c71bcc4"
+    },
+    {
+      "video_index": 19,
+      "note": "Night city street below an elevated structure, taxi, red signals and crossing pedestrian.",
+      "items": [
+        {
+          "query": "The dashcam drives along a night-time street beneath an elevated structure.",
+          "query_vi": "Camera chạy dọc con phố vào ban đêm bên dưới kết cấu trên cao.",
+          "windows": [
+            [
+              0,
+              28
+            ]
+          ],
+          "evidence": [
+            1,
+            5,
+            9,
+            13,
+            17,
+            21,
+            25,
+            27
+          ]
+        },
+        {
+          "query": "A yellow taxi passes the dashcam and moves into the lane ahead at night.",
+          "query_vi": "Một taxi vàng vượt camera rồi đi vào làn phía trước vào ban đêm.",
+          "windows": [
+            [
+              24,
+              30
+            ]
+          ],
+          "evidence": [
+            25,
+            27,
+            29
+          ]
+        },
+        {
+          "query": "The dashcam waits before a broad zebra crossing under red traffic lights at night.",
+          "query_vi": "Camera chờ trước vạch sang đường rộng dưới đèn giao thông đỏ vào ban đêm.",
+          "windows": [
+            [
+              30,
+              40
+            ]
+          ],
+          "evidence": [
+            31,
+            33,
+            35,
+            37,
+            39
+          ]
+        },
+        {
+          "query": "A pedestrian walks across the zebra crossing directly in front of the stopped dashcam at night.",
+          "query_vi": "Một người đi bộ băng qua vạch ngay trước camera đang dừng vào ban đêm.",
+          "windows": [
+            [
+              36,
+              40
+            ]
+          ],
+          "evidence": [
+            37,
+            39
+          ]
+        },
+        {
+          "query": "Bright daylight illuminates the elevated structure and the intersection.",
+          "query_vi": "Ánh nắng ban ngày chiếu sáng kết cấu trên cao và giao lộ.",
+          "windows": [],
+          "evidence": [
+            1,
+            9,
+            19,
+            29,
+            39
+          ]
+        }
+      ],
+      "video_id": "11a5f6e9-e7d1-4ae0-a0dc-f34d8ec8f2dc"
+    }
+  ]
+}

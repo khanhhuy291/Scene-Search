@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Duyệt nhãn video temporal</title>
+<style>
+body{font:16px system-ui;max-width:1100px;margin:32px auto;padding:0 16px;color:#17222b;background:#f6f8fa}section{background:white;padding:20px;margin:24px 0;border:1px solid #ccd5df;border-radius:10px}video,img{width:100%;max-height:620px;object-fit:contain;background:#111}label{display:block;margin:12px 0}textarea{width:95%;font:15px monospace;padding:8px}button,input,select{font:inherit;padding:8px}article{border-top:1px solid #ddd;padding:12px 0}.notice{border-left:5px solid #9e6500;padding:12px;background:#fff4d8}.toolbar{position:sticky;top:0;background:#f6f8fa;padding:12px 0;z-index:1}small{color:#45596a}
+</style>
+<style>.windows[aria-invalid="true"]{border:2px solid #b42318;background:#fff4f2}</style>
+<h1>Duyệt nhãn query và đoạn video</h1>
+<p class="notice" id="notice">Cần xem video đầy đủ và kiểm tra ranh giới trước khi xác nhận. Trang không hiển thị dự đoán model. Có thể xuất bản nháp rồi nạp lại để tiếp tục, không cần duyệt hết trong một phiên.</p>
+<p>Nhãn âm chỉ áp dụng cho video đang xem, không khẳng định query vắng trong toàn bộ kho. Số giây được tính trên video gốc, khoảng [bắt đầu, kết thúc).</p>
+<div class="toolbar"><label>Người duyệt <input id="reviewer" placeholder="Tên người duyệt"></label><label>Nạp file đã xuất để tiếp tục <input id="import" type="file" accept=".jsonl,.json"></label><button id="export">Xuất JSONL</button> <span id="count"></span></div>
+<main id="videos"></main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const data=JSON.parse(document.getElementById('data').textContent);
+const container=document.getElementById('videos');
+const originalRows=new Map(data.rows.map(row=>[row.query_id,{...row}]));
+document.getElementById('notice').textContent=data.notice;
+function updateCount(){document.getElementById('count').textContent=`${document.querySelectorAll('.confirmed:checked').length}/${data.rows.length} nhãn được chọn xác nhận`;}
+function render(){
+container.replaceChildren();
+for(const [index,video] of data.videos.entries()){
+ const section=document.createElement('section');
+ const title=document.createElement('h2');title.textContent=`Video ${index+1} · ${video.video_id}`;section.append(title);
+ const player=document.createElement('video');player.controls=true;player.preload='metadata';player.src=video.preview_url;section.append(player);
+ const image=document.createElement('img');image.src=video.review_sheet;image.alt='Các frame nguồn theo thời gian, đã sửa hướng hiển thị';section.append(image);
+ const watched=document.createElement('label');watched.innerHTML=`<input type="checkbox" id="watched-${index}"> Tôi đã xem video đủ để kiểm tra sự kiện và ranh giới của các nhãn được xác nhận.`;section.append(watched);
+ watched.querySelector('input').checked=data.rows.some(row=>row.target_video_id===video.video_id&&row.human_verified===true&&row.label_status==='human_verified');
+ for(const row of data.rows.filter(row=>row.target_video_id===video.video_id)){
+  const article=document.createElement('article');article.dataset.id=row.query_id;article.dataset.video=index;
+  const query=document.createElement('p');query.textContent=`${row.query_id} · ${row.query_vi} (${row.query})`;article.append(query);
+  if(row.visual_evidence_timestamps_s?.length){
+   const evidence=document.createElement('small');evidence.textContent='Mốc frame tham khảo (giây): '+row.visual_evidence_timestamps_s.map(value=>value.toFixed(1)).join(', ')+'. Cần xem video để kiểm tra nhãn và ranh giới.';article.append(evidence);
+  }
+  if(row.query_editable){
+   for(const [field,labelText] of [['query','Query tiếng Anh'],['query_vi','Query tiếng Việt']]){
+    const label=document.createElement('label');label.textContent=labelText+' — có thể sửa theo sự kiện thực tế trong video';article.append(label);
+    const input=document.createElement('textarea');input.className=field;input.rows=2;input.maxLength=1000;input.value=row[field];article.append(input);
+   }
+  }
+  const kind=document.createElement('select');kind.className='relation';
+  const choices=[['positive','Có sự kiện trong video'],['negative_for_target_video','Không có sự kiện trong video']];
+  if(row.query_editable||row.pair_relation==='unlabeled')choices.unshift(['unlabeled','Chưa xác định — cần xem video']);
+  for(const [value,label] of choices){const option=document.createElement('option');option.value=value;option.textContent=label;option.selected=row.pair_relation===value;kind.append(option);}article.append(kind);
+  const label=document.createElement('label');label.textContent='Các khoảng giây, ví dụ [[12,18],[25,29]]. Nhãn âm dùng [].';article.append(label);
+  const windows=document.createElement('textarea');windows.className='windows';windows.rows=2;windows.value=JSON.stringify(row.relevant_windows);article.append(windows);
+  const confirm=document.createElement('label');confirm.innerHTML='<input type="checkbox" class="confirmed"> Tôi xác nhận query và các khoảng thời gian ở trên.';article.append(confirm);
+  confirm.querySelector('input').checked=row.human_verified===true&&row.label_status==='human_verified';
+  section.append(article);
+ }
+ container.append(section);
+}
+updateCount();
+}
+render();
+document.addEventListener('change',updateCount);
+container.addEventListener('input',event=>{if(event.target.matches('textarea,select')){event.target.removeAttribute('aria-invalid');event.target.closest('article').querySelector('.confirmed').checked=false;updateCount();}});
+
+function readWindows(input,row,videoIndex){
+ const location=`Video ${Number(videoIndex)+1}, query ${row.query_id}`;
+ function invalid(reason){
+  input.setAttribute('aria-invalid','true');
+  input.scrollIntoView({block:'center'});
+  input.focus({preventScroll:true});
+  throw Error(`Ô thời gian chưa hợp lệ — ${location}. ${reason} Một khoảng: [[12,18]]. Nhiều khoảng: [[12,18],[25,29]]. Không có sự kiện: []. Dùng số giây, dấu chấm cho phần thập phân; không nhập 00:12 hoặc 12–18.`);
+ }
+ let windows;
+ try{windows=JSON.parse(input.value);}catch(error){invalid('Cần đặt tất cả các khoảng trong một cặp ngoặc vuông ngoài cùng, dùng dấu phẩy ngăn cách và không thêm chữ.');}
+ if(!Array.isArray(windows)||windows.some(pair=>!Array.isArray(pair)||pair.length!==2||!pair.every(Number.isFinite)||pair[0]<0||pair[0]>=pair[1]||pair[1]>row.duration_s))invalid(`Mỗi khoảng phải có hai số: 0 ≤ bắt đầu < kết thúc ≤ ${row.duration_s} giây.`);
+ input.removeAttribute('aria-invalid');
+ return windows;
+}
+document.getElementById('import').addEventListener('change',async event=>{
+ try{
+  const file=event.target.files[0];if(!file)return;
+  const rows=(await file.text()).replace(/^\uFEFF/,'').split(/\r?\n/).filter(line=>line.trim()).map(line=>JSON.parse(line));
+  if(rows.length!==data.rows.length||new Set(rows.map(row=>row.query_id)).size!==rows.length)throw Error('File cần có đúng các query ID của trang này.');
+  for(const row of rows){
+   const original=originalRows.get(row.query_id);
+   if(!original||['target_video_id','relative_source','duration_s','split'].some(key=>row[key]!==original[key]))throw Error(`Video hoặc split không khớp: ${row.query_id}`);
+   if(!original.query_editable&&(row.query!==original.query||row.query_vi!==original.query_vi))throw Error(`Query pilot đã bị thay đổi: ${row.query_id}`);
+   if(row.query_editable!==original.query_editable)throw Error(`Quyền sửa query không khớp: ${row.query_id}`);
+   if(!Array.isArray(row.relevant_windows))throw Error(`Thiếu danh sách khoảng thời gian: ${row.query_id}`);
+   if(!['positive','negative_for_target_video','unlabeled'].includes(row.pair_relation))throw Error(`Quan hệ nhãn không hợp lệ: ${row.query_id}`);
+  }
+  data.rows=rows;
+  document.getElementById('reviewer').value=rows.find(row=>row.reviewer)?.reviewer||'';
+  render();
+ }catch(error){alert(error.message);}
+});
+document.getElementById('export').addEventListener('click',()=>{
+ try{
+  const reviewer=document.getElementById('reviewer').value.trim();
+  const rows=data.rows.map(original=>{
+   const article=[...document.querySelectorAll('article')].find(item=>item.dataset.id===original.query_id);
+   const confirmed=article.querySelector('.confirmed').checked;
+   if(confirmed&&!reviewer)throw Error('Cần ghi tên người duyệt.');
+   if(confirmed&&!document.getElementById(`watched-${article.dataset.video}`).checked)throw Error(`Cần xác nhận đã xem video cho ${original.query_id}.`);
+   const windows=readWindows(article.querySelector('.windows'),original,article.dataset.video);
+   const relation=article.querySelector('.relation').value;
+   if(confirmed&&relation==='unlabeled')throw Error(`Cần chọn có hoặc không có sự kiện: ${original.query_id}`);
+   if(confirmed&&(relation==='positive')!==(windows.length>0))throw Error(`Nhãn âm phải có [], nhãn dương phải có ít nhất một khoảng (${original.query_id}).`);
+   const query=original.query_editable?article.querySelector('.query').value.trim():original.query;
+   const query_vi=original.query_editable?article.querySelector('.query_vi').value.trim():original.query_vi;
+   if(!query)throw Error(`Query tiếng Anh không được để trống: ${original.query_id}`);
+   return {...original,query,query_vi,relevant_windows:windows,pair_relation:relation,human_verified:confirmed,label_status:confirmed?'human_verified':'unreviewed',reviewer:confirmed?reviewer:null,reviewed_at:confirmed?new Date().toISOString():null,review_method:confirmed?'human full-video review':'awaiting human review',boundary_uncertainty_s:null};
+  });
+  const url=URL.createObjectURL(new Blob([rows.map(row=>JSON.stringify(row)).join('\n')+'\n'],{type:'application/x-ndjson;charset=utf-8'}));
+  const link=document.createElement('a');link.href=url;link.download=data.export_name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ }catch(error){alert(error.message);}
+});
+</script>
+</html>
