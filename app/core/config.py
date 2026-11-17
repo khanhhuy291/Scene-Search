@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _INSECURE_DEFAULT_AUTH_SECRET = (
@@ -247,6 +247,12 @@ class MLSettings(_BaseSettings):
     # fp32 by default: MPS half precision has known numerical gaps in some
     # transformer operators, and the corpus is small enough not to need fp16.
     dtype: Literal["float32", "float16", "bfloat16"] = "float32"
+    privacy_yolo_weights: Path | None = None
+    privacy_yolo_weights_url: HttpUrl | None = None
+    privacy_yolo_weights_sha256: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
+    privacy_yolo_cache_dir: Path = Path("~/.cache/scenesearch/privacy")
+    privacy_yolo_confidence: float = Field(default=0.25, gt=0, lt=1)
+    privacy_yolo_image_size: int = Field(default=960, ge=320, le=1920)
     batch_size: int = Field(default=64, ge=1, le=512)
     image_size: int = Field(default=224, ge=64, le=1024)
     num_workers: int = Field(default=2, ge=0, le=16)

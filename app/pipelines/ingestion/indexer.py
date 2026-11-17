@@ -6,6 +6,7 @@ from collections import Counter
 from collections.abc import Sequence
 from typing import Any, Protocol
 
+from core.privacy import is_anonymized_playback
 from pipelines.common.errors import PersistenceError, RetryablePersistenceError
 from pipelines.common.types import EmbeddingRecord, SceneRecord
 from search.points import ScenePayload, build_point
@@ -104,8 +105,7 @@ def build_scene_points(
             embedding_version=embedding.version,
             thumbnail_key=scene.thumbnail_key,
             video_key=scene.preview_key,
-            playback_timeline="source",
-            playback_anonymized=False,
+            playback_anonymized=is_anonymized_playback(scene.preview_key),
         )
         point = build_point("segment", scene.scene_id, embedding.vector, payload)
         point.payload = data

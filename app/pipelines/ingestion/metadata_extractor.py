@@ -173,11 +173,11 @@ async def _extract_frame_vlm(
     time_sec = frame.timestamp_ms / 1000.0
     objects = [d.class_name for d in frame.detections] if frame.detections else []
 
-    if frame.image is None:
+    if frame.display_image is None:
         frame.metadata["vlm_data"] = _fallback_metadata(objects, time_sec)
         return
 
-    data_url = _image_to_data_url(frame.image)
+    data_url = _image_to_data_url(frame.display_image)
     payload = {
         "messages": [
             {"role": "system", "content": VLM_METADATA_PROMPT},

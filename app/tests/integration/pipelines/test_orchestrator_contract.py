@@ -34,13 +34,15 @@ class Repository:
     def __init__(self):
         self.rows = []
         self.marked = False
+        self.preview_key = None
 
     async def get_video_for_pipeline(self, video_id):
         return SimpleNamespace(
             id=video_id,
             raw_object_key="raw/video.mp4",
-            ingested_at=None,
-            model_version=None,
+            ingested_at=True,
+            ingestion_status="processing",
+            model_version="stub-v1",
             dataset="test",
         )
 
@@ -51,8 +53,9 @@ class Repository:
         self.rows = list(rows)
         return [row.id for row in rows]
 
-    async def mark_video_indexed(self, video_id, *, model_version):
+    async def mark_video_indexed(self, video_id, *, model_version, preview_object_key):
         self.marked = True
+        self.preview_key = preview_object_key
 
 
 class Storage:
@@ -78,7 +81,7 @@ class Indexer:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_registered_video_becomes_scene_preview_and_vector(monkeypatch) -> None:
+async def test_reprocessed_video_becomes_anonymized_thumbnail_and_vector(monkeypatch) -> None:
     repository = Repository()
     storage = Storage()
     indexer = Indexer()
@@ -122,8 +125,8 @@ async def test_registered_video_becomes_scene_preview_and_vector(monkeypatch) ->
     monkeypatch.setattr(preview_generator.asyncio, "to_thread", run_inline)
     monkeypatch.setattr(
         preview_generator,
-        "_write_full_video",
-        lambda source, target, ctx: target.write_bytes(b"video"),
+        "write_anonymized_playback",
+        lambda source, target, detector, settings: target.write_bytes(b"encoded playback"),
     )
 
     result = await run_ingestion_pipeline(
@@ -135,13 +138,19 @@ async def test_registered_video_becomes_scene_preview_and_vector(monkeypatch) ->
     assert result["scenes_indexed"] == 1
     assert result["vectors_indexed"] == 1
     assert result["previews_created"] == 1
+    assert result["thumbnails_created"] == 1
     assert repository.marked
     assert repository.rows[0].id == UUID(repository.rows[0].id.hex)
     assert repository.rows[0].privacy_status == "verified"
+    playback_key = f"videos/{VIDEO_ID}/playback-yolo-v1/11111111-1111-4111-8111-111111111111.mp4"
+    assert repository.preview_key == playback_key
+    assert repository.rows[0].preview_object_key == playback_key
+    assert indexer.points[0].payload["playback_anonymized"] is True
     assert len(indexer.points) == 1
     assert storage.uploaded == [
-        f"videos/{VIDEO_ID}/playback.mp4",
-        f"videos/{VIDEO_ID}/segments/{repository.rows[0].id}/thumbnail.jpg",
+        playback_key,
+        f"videos/{VIDEO_ID}/segments/{repository.rows[0].id}/"
+        "thumbnail-yolo-v1/11111111-1111-4111-8111-111111111111.jpg",
     ]
 
 

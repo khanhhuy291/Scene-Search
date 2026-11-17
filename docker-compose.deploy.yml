@@ -54,13 +54,15 @@ services:
   worker:
     build:
       context: ./app
-      args: {EXTRAS: media}
+      args: {EXTRAS: "media,privacy"}
     command: celery -A worker.celery_app:celery_app worker -Q ingestion --loglevel=INFO --pool=solo
     env_file: ./app/.env
     environment: {<<: *backend-environment}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes: ["./data:/app/data:ro"]
+    volumes:
+      - ./data:/app/data:ro
+      - privacy_weights_cache:/home/appuser/.cache/scenesearch/privacy
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('redis', 6379), 5).close()"]
       interval: 10s
@@ -145,6 +147,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  privacy_weights_cache:
   postgres_data:
   redis_data:
   huggingface_cache:

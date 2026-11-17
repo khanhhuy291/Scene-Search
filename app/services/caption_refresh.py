@@ -12,6 +12,7 @@ from PIL import Image
 from qdrant_client import AsyncQdrantClient
 
 from core.config import get_settings
+from core.privacy import is_anonymized_thumbnail
 from infrastructure.minio import get_derived_storage
 from infrastructure.qdrant import get_qdrant_client
 from infrastructure.redis import get_redis_client
@@ -76,8 +77,8 @@ def _make_scene(point_id: str | int, payload: dict[str, Any]) -> SceneRecord:
         or payload.get("minio_thumbnail_key")
         or payload.get("frame_minio_key")
     )
-    if not isinstance(thumbnail_key, str) or not thumbnail_key.strip():
-        raise ValueError(f"Qdrant point {point_id} has no thumbnail object key")
+    if not is_anonymized_thumbnail(thumbnail_key):
+        raise ValueError(f"Qdrant point {point_id} has no anonymized thumbnail")
 
     video_id = str(payload.get("video_id") or "")
     if not video_id:
@@ -91,6 +92,7 @@ def _make_scene(point_id: str | int, payload: dict[str, Any]) -> SceneRecord:
         timestamp_ms=start_ms,
         frame_index=frame_index,
         image=image,
+        display_image=image,
         privacy_status="verified",
     )
     return SceneRecord(

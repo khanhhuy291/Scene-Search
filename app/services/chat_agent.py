@@ -14,6 +14,7 @@ from loguru import logger
 from PIL import Image
 
 from core.config import get_settings
+from core.privacy import THUMBNAIL_VERSION, is_anonymized_thumbnail
 from ml.image_cache import get_image_cache
 from schemas.chat import ChatRequest, ChatResponse, SceneSource
 from search.engine import get_search_engine
@@ -342,8 +343,11 @@ class SceneSearchQAAgent:
         for idx, (match, img) in enumerate(zip(candidate_matches, images), start=1):
             kf = match.keyframe
             timecode = f"{int(kf.timestamp_s // 60):02d}:{int(kf.timestamp_s % 60):02d}"
-            preview_url = f"/api/v1/media/thumbnail/{kf.point_id}" if kf.point_id else None
-            clip_url = f"/api/v1/media/clip/{kf.point_id}" if kf.point_id else None
+            preview_url = (
+                f"/api/v1/media/thumbnail/{kf.point_id}?v={THUMBNAIL_VERSION}"
+                if kf.point_id and is_anonymized_thumbnail(kf.thumbnail_key)
+                else None
+            )
 
             sources.append(
                 SceneSource(
@@ -355,7 +359,6 @@ class SceneSearchQAAgent:
                     ts_end_s=kf.end_timestamp_s,
                     caption=kf.caption,
                     preview_url=preview_url,
-                    clip_url=clip_url,
                     score=float(match.score) if match.score is not None else None,
                 )
             )

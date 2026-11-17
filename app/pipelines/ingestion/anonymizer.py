@@ -13,9 +13,8 @@ def anonymize_frames(
 ) -> Iterator[FrameRecord]:
     for frame in frames:
         result = anonymize_frame(frame.image, detector=detector)
-        if result.image is not frame.image:
-            frame.image.close()
-        frame.image = result.image
+        if result.blurred:
+            frame.display_image = result.image
         frame.privacy_region_count = result.region_count
         frame.privacy_status = "verified" if result.blurred else "failed"
         if result.error:

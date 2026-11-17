@@ -30,13 +30,14 @@ services:
     build:
       context: ./app
       args:
-        EXTRAS: media
+        EXTRAS: "media,privacy"
     command: celery -A worker.celery_app:celery_app worker -Q ingestion --loglevel=INFO --pool=solo
     env_file: ./app/.env
     environment:
       <<: *backend-environment
     volumes:
       - ./data:/app/data:ro
+      - privacy_weights_cache:/home/appuser/.cache/scenesearch/privacy
     healthcheck:
       disable: true
     depends_on:
@@ -103,5 +104,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  privacy_weights_cache:
   huggingface_cache:
 

@@ -23,6 +23,12 @@ from fastapi import APIRouter, HTTPException, status
 from loguru import logger
 
 from core.config import get_settings
+from core.privacy import (
+    PLAYBACK_VERSION,
+    THUMBNAIL_VERSION,
+    is_anonymized_playback,
+    is_anonymized_thumbnail,
+)
 from schemas.search import SearchRequest, SearchResponse, SearchResult
 from search.cursor import CursorError
 from search.engine import SearchOutcome, VideoMatch, get_search_engine
@@ -56,9 +62,15 @@ def _to_result(match: VideoMatch) -> SearchResult:
         video_second=keyframe.timestamp_s,
         score=match.score,
         thumbnail_url=(
-            f"/api/v1/media/thumbnail/{keyframe.point_id}" if keyframe.has_thumbnail else None
+            f"/api/v1/media/thumbnail/{keyframe.point_id}?v={THUMBNAIL_VERSION}"
+            if is_anonymized_thumbnail(keyframe.thumbnail_key)
+            else None
         ),
-        preview_url=(f"/api/v1/media/clip/{keyframe.point_id}" if keyframe.video_key else None),
+        preview_url=(
+            f"/api/v1/media/clip/{keyframe.point_id}?v={PLAYBACK_VERSION}"
+            if is_anonymized_playback(keyframe.video_key)
+            else None
+        ),
         caption=keyframe.caption or None,
         frame_no=keyframe.frame_no if keyframe.frame_no >= 0 else None,
         objects=objects_list,
@@ -88,7 +100,9 @@ def _to_result(match: VideoMatch) -> SearchResult:
                 "retrieval_tags": list(moment.retrieval_tags),
                 "is_primary": moment.point_id == keyframe.point_id,
                 "thumbnail_url": (
-                    f"/api/v1/media/thumbnail/{moment.point_id}" if moment.has_thumbnail else None
+                    f"/api/v1/media/thumbnail/{moment.point_id}?v={THUMBNAIL_VERSION}"
+                    if is_anonymized_thumbnail(moment.thumbnail_key)
+                    else None
                 ),
             }
             for moment in match.matched_keyframes

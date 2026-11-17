@@ -52,6 +52,8 @@ def filter_near_duplicates(
         if duplicate:
             previous.covers_end_ms = frame.covers_end_ms or frame.timestamp_ms
             frame.image.close()
+            if frame.display_image is not None:
+                frame.display_image.close()
             continue
         stats.kept += 1
         previous = frame

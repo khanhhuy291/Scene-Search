@@ -315,7 +315,7 @@ async def reprocess_existing_video(
         )
         return record
 
-    claimed = await corpus.claim_video_ingestion(video_id, allow_retry=True)
+    claimed = await corpus.claim_video_ingestion(video_id, allow_retry=False, allow_indexed=force)
     if not claimed:
         raise HTTPException(status_code=409, detail="This video is already being processed")
 

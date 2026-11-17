@@ -1,4 +1,4 @@
-"""Export an engineer-selected dataset as a zip of clips + JSONL manifest."""
+"""Export an engineer-selected dataset as a ZIP of anonymized thumbnails and a JSONL manifest."""
 
 from __future__ import annotations
 

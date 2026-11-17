@@ -6,6 +6,8 @@ the UI reads directly, so a change here is a change to what renders.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from search.catalog import Keyframe
@@ -20,7 +22,7 @@ def _keyframe(*, thumbnail: bool = True, video_key: bool = True) -> Keyframe:
         timestamp_s=18.93,
         frame_no=568,
         caption="A rainy street with no visible pedestrians.",
-        thumbnail_key="thumbnails/x/y.jpg" if thumbnail else None,
+        thumbnail_key="videos/x/segments/y/thumbnail-yolo-v1/job.jpg" if thumbnail else None,
         video_key="videos/x.mov" if video_key else None,
     )
 
@@ -111,9 +113,19 @@ async def test_thumbnail_url_points_at_this_api_not_object_storage(client, stub_
 
     result = response.json()["results"][0]
     assert result["thumbnail_url"] == (
-        "/api/v1/media/thumbnail/11111111-2222-3333-4444-555555555555"
+        "/api/v1/media/thumbnail/11111111-2222-3333-4444-555555555555?v=yolo-v1"
     )
-    assert result["preview_url"] == "/api/v1/media/clip/11111111-2222-3333-4444-555555555555"
+    assert result["preview_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_verified_playback_is_advertised(client, stub_engine) -> None:
+    keyframe = replace(_keyframe(), video_key="videos/x/playback-yolo-v1/job.mp4")
+    stub_engine(_outcome(keyframe=keyframe))
+    response = await client.post("/api/v1/search", json={"query": "rainy day"})
+    assert response.json()["results"][0]["preview_url"] == (
+        f"/api/v1/media/clip/{keyframe.point_id}?v=yolo-v1"
+    )
 
 
 @pytest.mark.asyncio
