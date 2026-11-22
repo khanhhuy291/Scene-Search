@@ -62,6 +62,8 @@ email-validator==2.3.0
     # via scene-search-p-081 (pyproject.toml)
 fastapi==0.141.1
     # via scene-search-p-081 (pyproject.toml)
+filelock==3.19.1
+    # via scene-search-p-081 (pyproject.toml)
 greenlet==3.5.5
     # via sqlalchemy
 grpcio==1.83.0

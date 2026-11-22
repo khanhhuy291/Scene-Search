@@ -12,8 +12,10 @@ from loguru import logger
 
 from core.config import Settings, get_settings
 from infrastructure.minio import MinIOStorage, get_derived_storage, get_raw_storage
-from ml.anonymize import BlurRegionDetector, LabelHeuristicDetector
+from ml.anonymize import BlurRegionDetector
 from ml.encoder import Encoder, get_qwen_encoder, get_siglip_encoder
+from ml.privacy_weights import resolve_privacy_weights
+from ml.yolo_privacy import get_yolo_privacy_detector
 from pipelines.common.context import PipelineContext
 from pipelines.common.errors import (
     PipelineError,
@@ -63,6 +65,12 @@ class PipelineDependencies:
 
 
 def default_dependencies() -> PipelineDependencies:
+    settings = get_settings()
+    detector = get_yolo_privacy_detector(
+        resolve_privacy_weights(settings.ml),
+        settings.ml.privacy_yolo_confidence,
+        settings.ml.privacy_yolo_image_size,
+    )
     return PipelineDependencies(
         repository=DefaultPipelineRepository(),
         scene_indexer=DefaultPipelineIndexer(),
@@ -70,10 +78,10 @@ def default_dependencies() -> PipelineDependencies:
         derived_storage=get_derived_storage(),
         encoder=get_qwen_encoder(),
         siglip_encoder=get_siglip_encoder(),
-        privacy_detector=LabelHeuristicDetector(),
+        privacy_detector=detector,
         tracker=PassthroughTracker(),
         behavior_detector=NoopBehaviorDetector(),
-        settings=get_settings(),
+        settings=settings,
     )
 
 
@@ -99,7 +107,11 @@ async def run_ingestion_pipeline(
         raise VideoAcquireError(f"Video {video_id} does not exist", stage="acquire")
     if not video.raw_object_key:
         raise VideoAcquireError(f"Video {video_id} has no raw object", stage="acquire")
-    if video.ingested_at is not None and video.model_version == deps.encoder.model_version:
+    if (
+        video.ingested_at is not None
+        and video.model_version == deps.encoder.model_version
+        and video.ingestion_status == "indexed"
+    ):
         return {"video_id": video_id, "duplicate": True, "scenes_indexed": 0}
 
     ctx = PipelineContext(
@@ -113,6 +125,7 @@ async def run_ingestion_pipeline(
     uploaded: list[str] = []
     owned_frames: list[Any] = []
     persistence_started = False
+    published = False
     try:
         with ctx:
             await _stage(progress, 5, "acquire")
@@ -207,7 +220,13 @@ async def run_ingestion_pipeline(
             )
 
             await _stage(progress, 80, "preview_generation")
-            uploaded = await generate_previews(ctx, scenes, deps.derived_storage, local_video)
+            uploaded = await generate_previews(
+                ctx,
+                scenes,
+                deps.derived_storage,
+                source_video=local_video,
+                detector=deps.privacy_detector,
+            )
 
             await _stage(progress, 85, "persistence")
             rows = [
@@ -233,13 +252,16 @@ async def run_ingestion_pipeline(
                 points = build_scene_points(scenes, embeddings, dataset=video.dataset)
                 written = await persist_vectors(video_id, points, deps.scene_indexer)
                 indexed = await deps.repository.mark_video_indexed(
-                    video_uuid, model_version=deps.encoder.model_version
+                    video_uuid,
+                    model_version=deps.encoder.model_version,
+                    preview_object_key=scenes[0].preview_key,
                 )
                 if indexed is False:
                     raise PipelineError(
                         "Video ingestion was cancelled during persistence",
                         stage="persistence",
                     )
+                published = True
             except Exception as exc:
                 if isinstance(exc, PipelineError):
                     raise
@@ -261,9 +283,8 @@ async def run_ingestion_pipeline(
                 "duplicate": False,
                 "scenes_indexed": len(scenes),
                 "vectors_indexed": written,
-                "previews_created": len(
-                    {scene.preview_key for scene in scenes if scene.preview_key}
-                ),
+                "previews_created": 1,
+                "thumbnails_created": len(scenes),
                 "metrics": dict(ctx.metrics),
                 "pipeline_version": pipeline_version,
             }
@@ -272,8 +293,9 @@ async def run_ingestion_pipeline(
         logger.bind(job_id=job_id, video_id=video_id, stage=stage).exception(
             "Ingestion pipeline failed: {error_type}", error_type=type(exc).__name__
         )
-        # Retry safety: raw input remains registered, while every derived side
-        # effect from this attempt is removed on a best-effort basis.
+        # Keep published media if final progress reporting fails.
+        if published:
+            raise
         if persistence_started:
             cleanup = [
                 ("Qdrant points", deps.scene_indexer.delete_by_video(video_id)),
@@ -291,11 +313,11 @@ async def run_ingestion_pipeline(
                 logger.exception("Failed to clean up preview {key}", key=key)
         raise
     finally:
-        # Ownership begins immediately after decode so failures before scene
-        # construction cannot strand native image buffers in a long-lived worker.
         for frame in owned_frames:
             try:
                 frame.image.close()
+                if frame.display_image is not None:
+                    frame.display_image.close()
             except Exception:
                 logger.exception("Failed to close decoded frame {index}", index=frame.frame_index)
 

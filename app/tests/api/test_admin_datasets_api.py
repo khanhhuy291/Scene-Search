@@ -120,7 +120,9 @@ async def test_dataset_export_unknown_points(client: AsyncClient, mock_engineer:
 
 
 @pytest.mark.asyncio
-async def test_dataset_export_zip_contains_clip(client: AsyncClient, mock_engineer: User) -> None:
+async def test_dataset_export_zip_contains_only_verified_thumbnails(
+    client: AsyncClient, mock_engineer: User
+) -> None:
     app.dependency_overrides[require_engineer_or_admin] = lambda: mock_engineer
     frame = Keyframe(
         point_id="p1",
@@ -128,7 +130,7 @@ async def test_dataset_export_zip_contains_clip(client: AsyncClient, mock_engine
         timestamp_s=1.5,
         frame_no=10,
         caption="rain",
-        thumbnail_key="thumbs/p1.jpg",
+        thumbnail_key="videos/video-1/segments/p1/thumbnail-yolo-v1/job.jpg",
         video_key="videos/video-1.mp4",
     )
     catalog = MagicMock()
@@ -136,9 +138,8 @@ async def test_dataset_export_zip_contains_clip(client: AsyncClient, mock_engine
     catalog.get.return_value = frame
 
     def fake_read(object_key: str) -> bytes:
-        if object_key.endswith(".jpg"):
-            return b"thumb-bytes"
-        return b"video-bytes"
+        assert object_key == frame.thumbnail_key
+        return b"thumb-bytes"
 
     with (
         patch("services.datasets.get_catalog", return_value=catalog),
@@ -160,7 +161,7 @@ async def test_dataset_export_zip_contains_clip(client: AsyncClient, mock_engine
     archive = ZipFile(BytesIO(response.content))
     names = set(archive.namelist())
     assert "manifest.jsonl" in names
-    assert any(name.startswith("videos/") for name in names)
+    assert not any(name.startswith("videos/") for name in names)
     assert any(name.startswith("thumbnails/") for name in names)
     manifest = archive.read("manifest.jsonl").decode()
     assert "ds_test" in manifest

@@ -200,9 +200,7 @@ export const SceneCard = ({ scene, searchMeta = null }) => {
 
   const rawPlayerSrc =
     scene.previewBaseUrl ||
-    (scene.previewUrl ? scene.previewUrl.split("#")[0] : null) ||
-    (scene.id ? `/api/v1/media/clip/${scene.id}` : null) ||
-    (scene.videoId ? `/api/v1/media/video/${scene.videoId}` : null)
+    (scene.previewUrl ? scene.previewUrl.split("#")[0] : null)
   const playerSrc = attachToken(rawPlayerSrc)
 
   return (

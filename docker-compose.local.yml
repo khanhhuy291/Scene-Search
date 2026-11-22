@@ -100,7 +100,11 @@ services:
 
   worker:
     <<: *app
-    image: scenesearch-local-backend
+    image: scenesearch-local-worker
+    build:
+      context: ./app
+      args: {EXTRAS: "media,privacy"}
+    volumes: ["privacy_weights_cache:/home/appuser/.cache/scenesearch/privacy"]
     command: celery -A worker.celery_app:celery_app worker -Q ingestion --loglevel=INFO --pool=solo
     healthcheck:
       disable: true
@@ -156,6 +160,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  privacy_weights_cache:
   postgres_data:
   redis_data:
   minio_data:

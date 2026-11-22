@@ -164,3 +164,45 @@ def test_end_to_end_blurs_a_pedestrian_head() -> None:
     assert result.blurred and result.region_count == 1
     head = (52, 22, 88, 48)
     assert variance(result.image, head) < variance(image, head) * 0.5
+
+
+def test_yolo_anonymizes_unlabeled_frames_and_propagates_failure(monkeypatch, tmp_path):
+    import sys
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from ml.yolo_privacy import YOLOPrivacyDetector
+    from pipelines.common.types import FrameRecord
+    from pipelines.ingestion.anonymizer import anonymize_frames
+    from pipelines.ingestion.privacy_verifier import verified_frames
+
+    model = Mock()
+    model.names = {0: "face", 1: "license-plate"}
+    boxes = Mock()
+    boxes.xyxy.tolist.return_value = [[2.5, 2.5, 14.5, 14.5], [17, 17, 25, 24]]
+    boxes.cls.tolist.return_value = [0, 1]
+    model.predict.side_effect = [
+        [SimpleNamespace(boxes=boxes)],
+        RuntimeError("inference failed"),
+    ]
+    monkeypatch.setitem(sys.modules, "ultralytics", SimpleNamespace(YOLO=lambda *a, **kw: model))
+    weights = tmp_path / "privacy.pt"
+    weights.touch()
+    detector = YOLOPrivacyDetector(weights, confidence=0.25, image_size=960)
+
+    original = checkered()
+    frame = FrameRecord(0, 0, original)
+    failed = FrameRecord(1000, 1, checkered())
+    try:
+        assert list(verified_frames(anonymize_frames([frame, failed], detector))) == [frame]
+        assert frame.image is original
+        assert frame.privacy_region_count == 2
+        assert frame.display_image is not None
+        assert frame.display_image.tobytes() != original.tobytes()
+        assert failed.privacy_status == "failed"
+        assert failed.display_image is None
+    finally:
+        original.close()
+        failed.image.close()
+        if frame.display_image is not None:
+            frame.display_image.close()

@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, call, patch
+from uuid import UUID
 
 import pytest
 
@@ -8,6 +9,7 @@ from api.v1.ingestion import (
     _celery_fallback,
     delete_video,
     process_direct_uploaded_video,
+    reprocess_existing_video,
     upload_and_create_ingestion_task,
 )
 from repositories.corpus import VideoDeletionPlan
@@ -105,6 +107,24 @@ async def test_failed_video_can_be_claimed_and_requeued() -> None:
 
     assert result is record
     claim.assert_awaited_once()
+    enqueue.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_force_reprocess_claims_indexed_videos():
+    video_id = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    video = SimpleNamespace(external_id="clip", raw_object_key="raw/clip.mp4")
+    with (
+        patch("api.v1.ingestion.corpus.get_video_for_pipeline", AsyncMock(return_value=video)),
+        patch(
+            "api.v1.ingestion.corpus.claim_video_ingestion", AsyncMock(return_value=True)
+        ) as claim,
+        patch("api.v1.ingestion.create_task_status", AsyncMock()),
+        patch("api.v1.ingestion.process_video_ingestion.apply_async") as enqueue,
+    ):
+        await reprocess_existing_video(video_id, force=True)
+
+    claim.assert_awaited_once_with(video_id, allow_retry=False, allow_indexed=True)
     enqueue.assert_called_once()
 
 

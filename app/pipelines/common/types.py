@@ -44,6 +44,7 @@ class FrameRecord:
     covers_end_ms: int | None = None
     embedding: list[float] | None = None
     qwen_embedding: list[float] | None = None
+    display_image: Image | None = None
 
 
 @dataclass

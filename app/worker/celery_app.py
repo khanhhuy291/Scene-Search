@@ -1,8 +1,10 @@
 """Celery application used by SceneSearch workers."""
 
-from celery import Celery
+from celery import Celery, bootsteps
+from loguru import logger
 
 from core.config import get_settings
+from ml.privacy_weights import resolve_privacy_weights
 from worker.task_names import CAPTION_REFRESH_TASK_NAME, INGESTION_TASK_NAME
 
 settings = get_settings().celery
@@ -43,6 +45,17 @@ celery_app.conf.update(
     worker_max_tasks_per_child=50,
     worker_prefetch_multiplier=settings.worker_prefetch_multiplier,
 )
+
+
+class PreparePrivacyWeights(bootsteps.StartStopStep):
+    """Prepare YOLO weights before consuming jobs."""
+
+    def start(self, worker) -> None:
+        weights = resolve_privacy_weights(get_settings().ml)
+        logger.info("YOLO privacy checkpoint ready at {path}", path=weights)
+
+
+celery_app.steps["worker"].add(PreparePrivacyWeights)
 
 
 __all__ = ["celery_app"]

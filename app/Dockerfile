@@ -3,23 +3,19 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Which optional dependency groups to install.
-#
-# The API currently needs only the core dependencies. The ingestion worker
-# overrides this with "ml" because it decodes and embeds frames. Keep developer
-# tooling out of runtime images; tests run in the host/CI development environment.
-#
 # Note for macOS: Docker Desktop cannot pass the Metal (MPS) device into a
 # container, so a containerized worker falls back to CPU and runs roughly ten
 # times slower. On a Mac, run the backing services with `make docker-infra` and
 # the worker natively with `make worker` (ADR-0001).
 ARG EXTRAS=""
 
-# Triton may compile CUDA kernels at runtime. Keep the compiler toolchain in
-# the ML image so inference cannot fail later with a missing gcc executable.
+# Triton may compile CUDA kernels at runtime.
 RUN case ",${EXTRAS}," in \
         *,ml,*) apt-get update \
-            && apt-get install -y --no-install-recommends build-essential \
+            && apt-get install -y --no-install-recommends build-essential libgl1 libglib2.0-0 \
+            && rm -rf /var/lib/apt/lists/* ;; \
+        *,privacy,*) apt-get update \
+            && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
             && rm -rf /var/lib/apt/lists/* ;; \
     esac
 
@@ -41,7 +37,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY . /app
 RUN pip install --no-deps . \
     && useradd --create-home --uid 10001 appuser \
-    && mkdir -p /home/appuser/.cache/huggingface \
+    && mkdir -p /home/appuser/.cache/huggingface /home/appuser/.cache/scenesearch/privacy \
     && chown -R appuser:appuser /home/appuser/.cache \
     && chown -R appuser:appuser /app
 

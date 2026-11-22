@@ -157,11 +157,15 @@ async def is_video_indexed(video_id: UUID) -> bool:
         return ingested_at is not None and status == "indexed"
 
 
-async def claim_video_ingestion(video_id: UUID, *, allow_retry: bool = True) -> bool:
+async def claim_video_ingestion(
+    video_id: UUID, *, allow_retry: bool = True, allow_indexed: bool = False
+) -> bool:
     """Atomically reserve a pending, failed, deleting, or retried video for one ingestion task."""
     statuses = (
         ("pending", "failed", "processing", "deleting") if allow_retry else ("pending", "failed")
     )
+    if allow_indexed:
+        statuses += ("indexed",)
     factory = get_session_factory()
     async with factory() as session, session.begin():
         result = await session.execute(
@@ -315,8 +319,15 @@ async def _insert_all(models: Sequence[Any]) -> None:
         session.add_all(models)
 
 
-async def mark_video_indexed(video_id: UUID, *, model_version: str) -> bool:
+async def mark_video_indexed(
+    video_id: UUID, *, model_version: str, preview_object_key: str | None = None
+) -> bool:
     now = datetime.now(UTC)
+    preview = (
+        {"preview_object_key": preview_object_key, "preview_blurred": True}
+        if preview_object_key is not None
+        else {}
+    )
     factory = get_session_factory()
     async with factory() as session, session.begin():
         result = await session.execute(
@@ -326,6 +337,7 @@ async def mark_video_indexed(video_id: UUID, *, model_version: str) -> bool:
                 model_version=model_version,
                 ingested_at=now,
                 ingestion_status="indexed",
+                **preview,
             )
         )
         if result.rowcount != 1:
