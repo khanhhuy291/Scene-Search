@@ -38,31 +38,11 @@ class AuthService:
         """
         try:
             user = await self._user_repo.get_by_email(email)
-        except Exception:
-            if (
-                email in ("admin@scenesearch.ai", "engineer@scenesearch.ai")
-                and password == "Pass@123456"
-            ):
-                from datetime import UTC, datetime
-
-                role = UserRole.ADMIN.value if "admin" in email else UserRole.ENGINEER.value
-                now = datetime.now(UTC)
-                return User(
-                    id=UUID(
-                        "00000000-0000-0000-0000-000000000001"
-                        if "admin" in email
-                        else "00000000-0000-0000-0000-000000000002"
-                    ),
-                    email=email,
-                    role=role,
-                    display_name="Demo " + ("Admin" if "admin" in email else "Engineer"),
-                    is_active=True,
-                    token_version=0,
-                    password_hash=get_password_hash(password),
-                    created_at=now,
-                    updated_at=now,
-                )
-            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication service unavailable",
+            ) from exc
 
         if not user or not verify_password(password, user.password_hash):
             raise HTTPException(

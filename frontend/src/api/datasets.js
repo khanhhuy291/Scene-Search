@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+import { API_BASE } from './base'
 
 export const exportDatasetZip = async (payload, token) => {
   const response = await fetch(`${API_BASE}/datasets/export`, {

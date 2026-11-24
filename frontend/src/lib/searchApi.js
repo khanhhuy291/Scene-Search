@@ -6,7 +6,9 @@
  * so a down API is not silently replaced by the mock corpus.
  */
 
-const SEARCH_URL = '/api/v1/search'
+import { API_BASE } from '../api/base'
+
+const SEARCH_URL = `${API_BASE}/search`
 
 export class SearchError extends Error {
   constructor(message, { status } = {}) {

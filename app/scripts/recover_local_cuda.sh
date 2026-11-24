@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-COMPOSE=(docker compose --env-file "$PROJECT_ROOT/app/.env" -f "$PROJECT_ROOT/docker-compose.local.yml")
+COMPOSE=(docker compose --env-file "$PROJECT_ROOT/app/.env" -f "$PROJECT_ROOT/docker-compose.yml")
 
 echo "This reloads only NVIDIA UVM and recreates the local embedding container."
 echo "Video data, databases and model cache are preserved."

@@ -2,7 +2,7 @@
 
 > **Chạy Docker local trên Linux/NVIDIA:** xem [LOCAL_DOCKER.md](docs/LOCAL_DOCKER.md).
 > Dùng `make local-up`, `make local-admin`, mở http://localhost:5173.
-> Stack này dùng `docker-compose.local.yml` và dữ liệu local riêng.
+> Local và GCP GPU VM dùng chung `docker-compose.yml`, build trực tiếp từ source.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.14-blue.svg)](app/)
@@ -107,7 +107,7 @@ SceneSearch-P-081/
 |   |-- src/pages/                  # SearchPage, IngestPage, AdminPage, DatasetDraftPage
 |   |-- nginx.conf                  # Nginx reverse proxy cho production container
 |-- deploy/                         # Kịch bản triển khai production và GitHub Actions
-|-- docs/                           # Tài liệu kỹ thuật: SRS, MVP, ADRs, hướng dẫn Cloud Run
+|-- docs/                           # Tài liệu kỹ thuật: SRS, MVP, ADRs, hướng dẫn Docker/GCP VM
 |   |-- assest/                     # Hình ảnh kiến trúc (SVG), preview UI (PNG)
 |   |-- architecture.html           # Sơ đồ kiến trúc tương tác (Interactive Diagram)
 |   |-- architecture_diagram.md     # Đặc tả chi tiết kiến trúc dạng Mermaid
@@ -115,10 +115,7 @@ SceneSearch-P-081/
 |   '-- adr/                        # Architecture Decision Records (ADR-0001 -> ADR-0005)
 |-- eval/results/                   # Báo cáo kết quả đánh giá thực nghiệm (report.md)
 |-- presentation/                   # Tài liệu thuyết trình, pitch deck và kịch bản demo
-|-- scripts/                        # Utility scripts: seed_users.py, deploy-multicontainer.sh
-|-- cloudrun-multicontainer.yaml    # Khai báo Pod 4 containers trên Google Cloud Run
-|-- docker-compose.yml              # Local development stack
-|-- docker-compose.deploy.yml       # Production stack triển khai local VM
+|-- docker-compose.yml              # Shared local / GCP GPU VM stack
 |-- Makefile                        # Quản lý lệnh build, test, run, deploy
 '-- README.md
 ```
@@ -286,34 +283,18 @@ CI/CD tự động chạy Ruff, Pytest (`.[dev,media]`), Frontend build và ki�
 
 ---
 
-## 10. Production Deployment (Triển Khai Google Cloud Run)
+## 10. Triển khai local và GCP GPU VM
 
-Hệ thống được tối ưu hóa triển khai trên **Google Cloud Run** theo mô hình kiến trúc **1-Service Multi-Container Pod**.
-
-### 10.1. Triển khai 1 câu lệnh (Recommended)
+Dùng duy nhất `docker-compose.yml`, build source trực tiếp trên máy chạy:
 
 ```bash
 make deploy
 ```
 
-**Quy trình `make deploy` tự động thực thi:**
-1. **Xác thực GCP:** Kích hoạt Service Account (`gcp-deployer-key.json`) và thiết lập project context (`vinai-infrastructure-505416`).
-2. **Cloud Build song song:** Kích hoạt Google Cloud Build (`cloudbuild-fast.yaml`) với Docker layer caching và đẩy các immutable image đã gắn nhãn phiên bản lên Google Artifact Registry (`asia-southeast1`).
-3. **Triển khai Cloud Run Pod:** Áp dụng tệp đặc tả [`cloudrun-multicontainer.yaml`](./cloudrun-multicontainer.yaml) thiết lập 4 containers cùng hoạt động dưới 1 endpoint HTTPS duy nhất:
-   - **Frontend Ingress (`frontend`):** Nginx reverse proxy phục vụ UI React 19 trên Port 80 và chuyển tiếp cùng origin các truy vấn `/api/*`.
-   - **API Server (`api`):** FastAPI trên Port 8000 xử lý tìm kiếm ngữ nghĩa, xác thực và điều phối tác vụ.
-   - **Embedding Server (`embedding-api`):** Vi dịch vụ Qwen3-VL-2B chuyên dụng trên Port 8001.
-   - **Background Worker (`worker`):** Celery ingestion daemon xử lý giải mã video, trích xuất SSIM và làm mờ khuôn mặt/biển số bằng YOLOv8.
-4. **Tích hợp hạ tầng đám mây:** Tự động kết nối Cloud SQL (PostgreSQL), Upstash Redis, Qdrant Cloud cluster và MinIO/GCS object storage.
-
-### 10.2. Các mục tiêu deploy khác
-
-| Lệnh Make | Mục đích triển khai |
-| :--- | :--- |
-| `make deploy` | Triển khai hoàn chỉnh Cloud Build + Cloud Run Multi-Container |
-| `make deploy-only` | Nạp cấu hình Cloud Run cập nhật tức thời mà không cần build lại ảnh |
-| `make docker-deploy` | Khởi chạy stack production trên máy chủ ảo / VM nội bộ (Port 8088) |
-| `make deploy-compose`| Triển khai Docker Compose production trên server từ xa |
+`make local-up`, `make docker-up`, `make deploy-gcp` dùng cùng cấu hình.
+`make deploy-only` chạy image có sẵn. Các lệnh này chạy trên máy hiện tại;
+SSH vào VM trước khi chạy nếu triển khai GCP.
+Xem [hướng dẫn cấu hình VM, cổng truy cập và volume](docs/DOCKER_GCLOUD_GUIDE.md).
 
 ---
 
@@ -360,7 +341,7 @@ Hệ thống được đánh giá thực nghiệm toàn diện trên tập chu�
 | [docs/SRS.md](docs/SRS.md) | Đặc tả yêu cầu phần mềm và trạng thái tính năng hiện tại |
 | [docs/MVP.md](docs/MVP.md) | Tiêu chí bàn giao MVP, bài kiểm thử chấp nhận và roadmap |
 | [docs/architecture_diagram.md](docs/architecture_diagram.md) | Sơ đồ Mermaid và đặc tả chi tiết kiến trúc microservices |
-| [docs/DOCKER_GCLOUD_GUIDE.md](docs/DOCKER_GCLOUD_GUIDE.md) | Hướng dẫn vận hành Docker và triển khai GCP Cloud Run |
+| [docs/DOCKER_GCLOUD_GUIDE.md](docs/DOCKER_GCLOUD_GUIDE.md) | Hướng dẫn Docker dùng chung local/GCP GPU VM |
 | [docs/AGENTIC_SEARCH.md](docs/AGENTIC_SEARCH.md) | Thiết kế thuật toán Tri-Tier Agentic Search, Visual-HyDE và Reflection |
 | [docs/adr/ADR-0001-mps-acceleration.md](docs/adr/ADR-0001-mps-acceleration.md) | Lựa chọn tăng tốc Metal (MPS) trên Apple Silicon |
 | [docs/adr/ADR-0002-two-bucket-storage.md](docs/adr/ADR-0002-two-bucket-storage.md) | Thiết kế 2-bucket lưu trữ bảo vệ quyền riêng tư người dùng |

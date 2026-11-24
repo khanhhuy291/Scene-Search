@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -70,40 +69,16 @@ async def get_current_user(
     except (jwt.InvalidTokenError, ValueError):
         raise credentials_exception
 
-    now = datetime.now(UTC)
     try:
-        user_repo = UserRepository(db)
-        user = await user_repo.get_by_id(user_id)
-    except Exception:
-        user = User(
-            id=user_id,
-            email=payload.get("email", "engineer@scenesearch.ai"),
-            role=payload.get("role", UserRole.ENGINEER.value),
-            display_name=payload.get("display_name", "Demo User"),
-            is_active=True,
-            token_version=payload.get("token_version", 0),
-            created_at=now,
-            updated_at=now,
-        )
+        user = await UserRepository(db).get_by_id(user_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service unavailable",
+        ) from exc
 
     if user is None:
-        if str(user_id) in (
-            "00000000-0000-0000-0000-000000000001",
-            "00000000-0000-0000-0000-000000000002",
-        ):
-            role = UserRole.ADMIN.value if "0001" in str(user_id) else UserRole.ENGINEER.value
-            user = User(
-                id=user_id,
-                email=payload.get("email", "engineer@scenesearch.ai"),
-                role=role,
-                display_name="Demo User",
-                is_active=True,
-                token_version=payload.get("token_version", 0),
-                created_at=now,
-                updated_at=now,
-            )
-        else:
-            raise credentials_exception
+        raise credentials_exception
 
     if not user.is_active:
         raise HTTPException(

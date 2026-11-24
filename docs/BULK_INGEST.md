@@ -68,7 +68,7 @@ mới để không bỏ qua dữ liệu chỉ vì lần ingest cũ đã complete
 Xem tiến độ trong giao diện ingestion, hoặc:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml logs -f --tail=100 worker
+docker compose --env-file app/.env -f docker-compose.yml logs -f --tail=100 worker
 ```
 
 Sau khi có job completed, thử search trong giao diện. Catalog payload được cache
@@ -76,7 +76,7 @@ tối đa 15 phút. Nếu đã search trong lúc batch còn chạy và muốn th
 ngay, có thể khởi động lại riêng API sau khi batch hoàn tất:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml restart api
+docker compose --env-file app/.env -f docker-compose.yml restart api
 ```
 
 ## Phạm vi kiểm chứng và giới hạn hiện tại

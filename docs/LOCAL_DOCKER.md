@@ -3,7 +3,7 @@
 Các bước vận hành chi tiết từ khởi động đến tắt stack nằm trong
 [LOCAL_START_STOP.md](LOCAL_START_STOP.md).
 
-Stack riêng: `docker-compose.local.yml`, project `scenesearch-local`. Không dùng
+Stack chung local/GCP GPU VM: `docker-compose.yml`, project `scenesearch-local`. Không dùng
 Google Cloud hay các endpoint DB/storage cũ. Dữ liệu nằm trong các named volume
 của project này. Cần Docker Compose và NVIDIA Container Toolkit cho GPU embedding.
 
@@ -16,7 +16,7 @@ những lần khởi động lại dùng cache.
 ## Cấu hình và khởi động
 
 Lần cài đặt này đã tạo `app/.env` với credential ngẫu nhiên (quyền 600).
-Nếu cài máy mới, copy `app/.env.local.example` sang `app/.env`, thay tất cả giá trị
+Nếu cài máy mới, copy `app/.env.example` sang `app/.env`, thay tất cả giá trị
 `change-me` bằng secret riêng. Không ghi đè `.env` đang dùng nếu chưa sao lưu.
 
 ```bash
@@ -38,7 +38,7 @@ liveness, cần `/model/status` để biết model đã load xong hay chưa.
 | MinIO console | http://localhost:9001 |
 | Qdrant dashboard | http://localhost:6333/dashboard |
 
-Các cổng chỉ bind loopback. PostgreSQL và Redis chỉ truy cập qua network Docker.
+Mặc định các cổng chỉ bind loopback; xem [hướng dẫn GCP VM](DOCKER_GCLOUD_GUIDE.md) để mở frontend từ xa. PostgreSQL và Redis chỉ truy cập qua network Docker.
 Credential admin nằm trong `app/.env`: `LOCAL_ADMIN_EMAIL`, `LOCAL_ADMIN_PASSWORD`.
 MinIO dùng `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` trong cùng file.
 `make local-admin` tạo tài khoản DB thật, chạy lại không đổi mật khẩu user đã có.
@@ -137,7 +137,7 @@ driver ghi Xid/MMU fault, không tiếp tục upload vào cùng context CUDA. Kh
 lại riêng service GPU rồi đợi model ready:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml restart embedding-api
+docker compose --env-file app/.env -f docker-compose.yml restart embedding-api
 ```
 
 Lệnh này giữ nguyên video, DB và cache weights. Sau khi model ready, tiếp tục các

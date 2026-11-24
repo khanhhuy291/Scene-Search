@@ -1,6 +1,6 @@
 # Khởi động và tắt SceneSearch local
 
-Tài liệu này dành cho stack Docker local trong `docker-compose.local.yml`, có
+Tài liệu này dành cho stack Docker local trong `docker-compose.yml`, có
 Compose project `scenesearch-local`. Không dùng các lệnh `docker-up` hoặc
 `docker-down`: các target đó trỏ tới stack cũ.
 
@@ -13,7 +13,7 @@ Compose project `scenesearch-local`. Không dùng các lệnh `docker-up` hoặc
 - Có `app/.env`. Khi cài mới, tạo file từ mẫu local:
 
   ```bash
-  cp app/.env.local.example app/.env
+  cp app/.env.example app/.env
   chmod 600 app/.env
   ```
 
@@ -50,7 +50,7 @@ có thể báo healthy trước khi model sẵn sàng; chờ log model hoặc ki
 thái model trong Admin/API. Khi cần xem riêng một service:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml logs -f --tail=100 embedding-api
+docker compose --env-file app/.env -f docker-compose.yml logs -f --tail=100 embedding-api
 ```
 
 Tạo tài khoản admin local sau khi API đã healthy:
@@ -96,7 +96,7 @@ make local-ps
 chạy. Xem log riêng:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml logs --tail=150 embedding-api
+docker compose --env-file app/.env -f docker-compose.yml logs --tail=150 embedding-api
 ```
 
 ## 5. Xem log và khởi động lại từng service
@@ -107,7 +107,7 @@ xem log, không dừng container.
 Xem log một service:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml logs -f --tail=100 api
+docker compose --env-file app/.env -f docker-compose.yml logs -f --tail=100 api
 ```
 
 Thay `api` bằng `worker`, `embedding-api`, `frontend`, `postgres`, `redis`,
@@ -116,14 +116,14 @@ Thay `api` bằng `worker`, `embedding-api`, `frontend`, `postgres`, `redis`,
 Khởi động lại một service mà không dừng phần còn lại:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml restart api
+docker compose --env-file app/.env -f docker-compose.yml restart api
 ```
 
 Sau khi thay đổi cấu hình Compose hoặc cần tạo lại container frontend để cập nhật
 kết nối tới API:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml up -d --no-deps --force-recreate frontend
+docker compose --env-file app/.env -f docker-compose.yml up -d --no-deps --force-recreate frontend
 ```
 
 ## 6. Dừng project
@@ -138,13 +138,13 @@ make local-down
 cần dừng tạm một service:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml stop embedding-api
+docker compose --env-file app/.env -f docker-compose.yml stop embedding-api
 ```
 
 Chạy `start` để bật lại service đã stop:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml start embedding-api
+docker compose --env-file app/.env -f docker-compose.yml start embedding-api
 ```
 
 Hoặc dùng `make local-ps` để kiểm tra stack sau khi dừng. Lệnh `make local-down`
@@ -170,7 +170,7 @@ có thể xóa database, video trong MinIO, Qdrant vectors và model cache.
 
 ```bash
 make local-ps
-docker compose --env-file app/.env -f docker-compose.local.yml logs --tail=150 api frontend
+docker compose --env-file app/.env -f docker-compose.yml logs --tail=150 api frontend
 ```
 
 Đợi PostgreSQL/Redis/MinIO healthy và API hoàn tất migration. Nếu container vừa
@@ -178,7 +178,7 @@ docker compose --env-file app/.env -f docker-compose.local.yml logs --tail=150 a
 lại địa chỉ API:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml up -d --no-deps --force-recreate frontend
+docker compose --env-file app/.env -f docker-compose.yml up -d --no-deps --force-recreate frontend
 ```
 
 ### Embedding báo lỗi CUDA
@@ -186,7 +186,7 @@ docker compose --env-file app/.env -f docker-compose.local.yml up -d --no-deps -
 Xem log GPU:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml logs --tail=200 embedding-api
+docker compose --env-file app/.env -f docker-compose.yml logs --tail=200 embedding-api
 ```
 
 Nếu báo CUDA launch failure hoặc lỗi GPU sticky, dừng ingestion, sau đó làm theo
@@ -199,7 +199,7 @@ Thay đổi `.env` không tự cập nhật môi trường của container đang
 service cần nhận biến mới, ví dụ:
 
 ```bash
-docker compose --env-file app/.env -f docker-compose.local.yml up -d --no-deps --force-recreate api worker
+docker compose --env-file app/.env -f docker-compose.yml up -d --no-deps --force-recreate api worker
 ```
 
 Nếu thay biến dùng chung hoặc không chắc service nào phụ thuộc, chạy lại toàn bộ

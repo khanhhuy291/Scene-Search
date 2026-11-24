@@ -5,17 +5,19 @@ from __future__ import annotations
 import asyncio
 import os
 
-from core.config import get_settings
+from dotenv import dotenv_values
+
+from core.config import APP_ENV_FILE, get_settings
 from core.security import get_password_hash
 from infrastructure.postgres import close_postgres, get_session_factory
 from repositories.user import UserRepository
 
 
 async def main() -> None:
-    if get_settings().app.env != "development":
-        raise RuntimeError("Local admin bootstrap requires APP_ENV=development")
-    email = os.environ["LOCAL_ADMIN_EMAIL"]
-    password = os.environ["LOCAL_ADMIN_PASSWORD"]
+    get_settings()  # Validate the deployment settings before opening the database.
+    values = {**dotenv_values(APP_ENV_FILE), **os.environ}
+    email = values["LOCAL_ADMIN_EMAIL"]
+    password = values["LOCAL_ADMIN_PASSWORD"]
     if len(password) < 12:
         raise ValueError("LOCAL_ADMIN_PASSWORD must contain at least 12 characters")
     try:

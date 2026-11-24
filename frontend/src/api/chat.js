@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+import { API_BASE } from './base'
 
 export const sendChatMessageApi = async ({ message, history = [], limit = 3 }) => {
   const response = await fetch(`${API_BASE}/chat`, {

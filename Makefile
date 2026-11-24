@@ -5,27 +5,26 @@
 	eval eval-dry eval-check
 
 COMPOSE := docker compose --env-file app/.env -f docker-compose.yml
-LOCAL_COMPOSE := docker compose --env-file app/.env -f docker-compose.local.yml
-PYTHON := app/.venv/bin/python
+PYTHON ?= app/.venv/bin/python
 
 .PHONY: local-build local-up local-down local-logs local-ps local-admin
 local-build:
-	$(LOCAL_COMPOSE) build
+	$(COMPOSE) build
 
 local-up:
-	$(LOCAL_COMPOSE) up -d --build
+	$(COMPOSE) up -d --build
 
 local-down:
-	$(LOCAL_COMPOSE) down
+	$(COMPOSE) down
 
 local-logs:
-	$(LOCAL_COMPOSE) logs -f --tail=100
+	$(COMPOSE) logs -f --tail=100
 
 local-ps:
-	$(LOCAL_COMPOSE) ps
+	$(COMPOSE) ps
 
 local-admin:
-	$(LOCAL_COMPOSE) exec api python -m services.bootstrap_admin
+	$(COMPOSE) exec api python -m services.bootstrap_admin
 
 install:
 	$(MAKE) -C app install
@@ -107,52 +106,22 @@ deploy-compose:
 deploy-vm:
 	$(COMPOSE) up -d --build
 
-# Shared-host stack: production UI + API on port 8088.
-docker-deploy:
-	DEPLOY_PORT="$(or $(DEPLOY_PORT),8088)" \
-	DEPLOY_PUBLIC_ORIGIN="$(or $(DEPLOY_PUBLIC_ORIGIN),http://103.130.211.150:8088)" \
-	bash scripts/deploy-shared.sh
-
-# Google Cloud Run 1-Service Multi-Container Deployment (1 URL duy nhất: Frontend + API + AI + Worker)
-deploy:
-	bash scripts/deploy-multicontainer.sh
-
-deploy-gcp:
-	bash scripts/deploy-multicontainer.sh
-
-deploy-cloudrun:
-	bash scripts/deploy-multicontainer.sh
-
-deploy-multicontainer:
-	bash scripts/deploy-multicontainer.sh
-
-deploy-run-compose:
-	bash scripts/deploy-multicontainer.sh
+# All deployment aliases build the same stack on the target host (including GCP VM).
+.PHONY: deploy-compose deploy-vm deploy-all deploy-gpu docker-logs docker-ps docker-worker docker-api docker-embedding docker-frontend
+docker-deploy deploy deploy-gcp deploy-full deploy-all deploy-gpu deploy-local:
+	$(COMPOSE) up -d --build
 
 deploy-only:
-	bash scripts/deploy-multicontainer.sh --no-build
-
-deploy-full:
-	bash scripts/deploy-gcp.sh --full
-
-deploy-all:
-	bash scripts/deploy-gcp.sh --full
-
-# Deploy full stack with Cloud Run GPU (NVIDIA Tesla T4)
-deploy-gpu:
-	bash scripts/deploy-gcp.sh --full --gpu nvidia-tesla-t4
+	$(COMPOSE) up -d
 
 deploy-api:
-	bash scripts/deploy-gcp.sh --api-only
+	$(COMPOSE) up -d --build api worker
 
 deploy-frontend:
-	bash scripts/deploy-gcp.sh --frontend-only
+	$(COMPOSE) up -d --build frontend
 
-deploy-local:
-	bash scripts/deploy-gcp.sh --local
-
-deploy-only:
-	bash scripts/deploy-gcp.sh --deploy-only
+docker-infra:
+	$(COMPOSE) up -d postgres redis minio qdrant
 
 # Retrieval evaluation. See app/eval/README.md for what each band can and cannot
 # be scored against.
@@ -167,3 +136,9 @@ eval-check:
 
 eval-qwen:
 	$(MAKE) -C app eval-qwen args="$(args)"
+
+# Validate names/types without dumping secrets. Requires the backend Python environment.
+.PHONY: config-check
+config-check:
+	$(COMPOSE) config --quiet
+	PYTHONPATH=app $(PYTHON) -m services.validate_config

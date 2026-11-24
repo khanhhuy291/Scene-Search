@@ -8,6 +8,9 @@ from typing import Annotated, Literal
 from pydantic import AliasChoices, Field, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+# Resolve against the source tree (or /app in Docker), never the shell cwd.
+APP_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+
 _INSECURE_DEFAULT_AUTH_SECRET = (
     "scenesearch-insecure-jwt-secret-key-change-in-production-min32chars"
 )
@@ -15,7 +18,7 @@ _INSECURE_DEFAULT_AUTH_SECRET = (
 
 class _BaseSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=APP_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -26,7 +29,7 @@ class DatabaseSettings(_BaseSettings):
     """PostgreSQL and SQLAlchemy connection-pool settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=APP_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         env_prefix="POSTGRES_",
@@ -66,7 +69,7 @@ class RedisSettings(_BaseSettings):
     """Redis connection and pool settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="REDIS_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="REDIS_"
     )
 
     host: str = "localhost"
@@ -84,7 +87,7 @@ class CelerySettings(_BaseSettings):
     """Celery broker, result backend, and worker safety limits."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=APP_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         env_prefix="CELERY_",
@@ -116,7 +119,7 @@ class MinIOSettings(_BaseSettings):
     """S3-compatible MinIO object-store settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="MINIO_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="MINIO_"
     )
 
     endpoint: str = "localhost:9000"
@@ -188,7 +191,7 @@ class QdrantSettings(_BaseSettings):
     """Qdrant connection and scene-vector settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="QDRANT_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="QDRANT_"
     )
 
     host: str = "localhost"
@@ -213,7 +216,7 @@ class MLSettings(_BaseSettings):
     """Embedding-model and inference-device settings (ADR-0001)."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=APP_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         env_prefix="ML_",
@@ -279,7 +282,7 @@ class VideoSettings(_BaseSettings):
     """Decoding, sampling, and preview-encoding settings (ADR-0004)."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="VIDEO_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="VIDEO_"
     )
 
     # Frames per second to sample for embedding. The selected corpus contract
@@ -327,7 +330,7 @@ class DatasetSettings(_BaseSettings):
     """Local corpus layout selected by ADR-0005."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="DATASET_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="DATASET_"
     )
 
     name: str = "driving-video-object-tracking"
@@ -354,7 +357,7 @@ class SearchSettings(_BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="SEARCH_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="SEARCH_"
     )
 
     # Minimum SigLIP cosine for a keyframe to be a plausible answer at all.
@@ -427,7 +430,7 @@ class LLMSettings(_BaseSettings):
     """OpenAI-compatible LLM service settings for Agentic Search (HyDE & Routing)."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="LLM_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="LLM_"
     )
 
     api_key: SecretStr | None = Field(
@@ -450,7 +453,7 @@ class AppSettings(_BaseSettings):
     """HTTP application, logging, and model settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="APP_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="APP_"
     )
 
     name: str = "SceneSearch-P-081"
@@ -483,7 +486,7 @@ class AuthSettings(_BaseSettings):
     """JWT authentication and authorization settings loaded from environment."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="AUTH_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="AUTH_"
     )
 
     secret_key: SecretStr = Field(
