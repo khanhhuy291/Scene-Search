@@ -8,7 +8,7 @@ from loguru import logger
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models
 
-from core.config import get_settings
+from core.config import QdrantSettings, get_settings
 
 _client: AsyncQdrantClient | None = None
 
@@ -74,6 +74,24 @@ def is_read_only_collection(vectors: object) -> bool:
     """
 
     return _is_hybrid_named_vectors(vectors)
+
+
+def can_write_collection(vectors: object, settings: QdrantSettings) -> bool:
+    """Use the same ownership policy for provisioning and mutation."""
+    if not isinstance(vectors, dict) or not is_read_only_collection(vectors):
+        return True
+    if settings.allow_named_vector_writes:
+        names = set(vectors)
+        if "qwen" in names and "bgem3" not in names:
+            return True
+        if settings.write_vector_name and settings.write_vector_name in names:
+            return True
+    selected = vectors.get(settings.write_vector_name)
+    return bool(
+        settings.write_vector_name
+        and selected is not None
+        and getattr(selected, "size", None) == settings.vector_size
+    )
 
 
 def _is_hybrid_named_vectors(vectors: object) -> bool:
@@ -183,9 +201,9 @@ async def init_qdrant_collections(client: AsyncQdrantClient | None = None) -> bo
             info = await qdrant.get_collection(settings.collection)
             vectors = getattr(getattr(info.config, "params", None), "vectors", None)
             _validate_collection_config(info.config, settings.vector_size)
-            # Do not rewrite payload indexes on a remote hybrid collection —
-            # those fields and the search contract belong to Huy's embedder path.
-            if _is_hybrid_named_vectors(vectors):
+            # Shared remote collections remain read-only; owned local collections
+            # must receive newly required indexes even when already provisioned.
+            if not can_write_collection(vectors, settings):
                 return False
             await ensure_payload_indexes(qdrant)
             return False
@@ -238,6 +256,7 @@ async def close_qdrant() -> None:
 
 
 __all__ = [
+    "can_write_collection",
     "is_read_only_collection",
     "close_qdrant",
     "ensure_payload_indexes",

@@ -16,6 +16,7 @@ from loguru import logger
 
 from core.config import MLSettings, get_settings
 from ml.device import resolve_device, resolve_dtype
+from ml.vectors import normalize_vectors
 
 if TYPE_CHECKING:  # pragma: no cover
     from PIL.Image import Image
@@ -120,21 +121,14 @@ class QwenVLEmbeddingClient:
 
     def _normalize(self, vectors: Any) -> list[Vector]:
         """L2-normalize torch tensor or list of float lists."""
+        if hasattr(vectors, "detach"):
+            vectors = vectors.detach().float().cpu().tolist()
+        elif hasattr(vectors, "tolist"):
+            vectors = vectors.tolist()
         try:
-            import torch
-        except ImportError:
-            torch = None
-
-        if torch is not None and isinstance(vectors, torch.Tensor):
-            normed = vectors / vectors.norm(dim=-1, keepdim=True).clamp(min=1e-12)
-            return [[float(v) for v in row] for row in normed.float().cpu()]
-
-        result: list[Vector] = []
-        for vec in vectors:
-            sq_sum = sum(x * x for x in vec)
-            norm = (sq_sum**0.5) if sq_sum > 0 else 1.0
-            result.append([x / norm for x in vec])
-        return result
+            return normalize_vectors(vectors, dimension=self.dimension)
+        except ValueError as exc:
+            raise QwenEmbeddingError(str(exc)) from exc
 
     def _image_to_base64(self, image: Image) -> str:
         buffer = io.BytesIO()
@@ -320,9 +314,10 @@ class QwenVLEmbeddingClient:
             embeddings = self._encode_local_images(
                 prepared, min(len(prepared), self.settings.batch_size)
             )
-            if hasattr(embeddings, "tolist"):
-                return embeddings.tolist()
-            return [list(v) for v in embeddings]
+            result = self._normalize(embeddings)
+            if len(result) != len(images):
+                raise QwenEmbeddingError("Encoder returned the wrong number of image vectors")
+            return result
         finally:
             for image in owned:
                 image.close()
@@ -348,9 +343,10 @@ class QwenVLEmbeddingClient:
             convert_to_numpy=True,
             show_progress_bar=False,
         )
-        if hasattr(embeddings, "tolist"):
-            return embeddings.tolist()
-        return [list(v) for v in embeddings]
+        result = self._normalize(embeddings)
+        if len(result) != len(texts):
+            raise QwenEmbeddingError("Encoder returned the wrong number of text vectors")
+        return result
 
     def encode_multimodal(self, images: Sequence[Image], texts: Sequence[str]) -> list[Vector]:
         """Generate joint embeddings for paired image and text inputs."""

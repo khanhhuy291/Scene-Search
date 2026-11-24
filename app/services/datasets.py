@@ -63,6 +63,8 @@ async def build_export_zip(request: DatasetExportRequest) -> Path:
                     "type": "keyframe",
                     "scene_id": frame.point_id,
                     "video_id": frame.video_id,
+                    "representative_timestamp_s": frame.representative_timestamp_s,
+                    "representative_frame_index": frame.representative_frame_index,
                     "ts_start_s": (
                         item.ts_start_s if item.ts_start_s is not None else frame.timestamp_s
                     ),

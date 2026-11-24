@@ -43,6 +43,9 @@ class SegmentRow:
     preview_object_key: str | None = None
     privacy_status: str = "pending"
     pipeline_version: str | None = None
+    representative_frame_index: int | None = None
+    representative_timestamp_ms: int | None = None
+    thumbnail_object_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -262,6 +265,9 @@ async def insert_segments(video_id: UUID, segments: Sequence[SegmentRow]) -> lis
                 "preview_object_key",
                 "privacy_status",
                 "pipeline_version",
+                "representative_frame_index",
+                "representative_timestamp_ms",
+                "thumbnail_object_key",
                 "embedding_model",
                 "model_version",
             )
@@ -293,6 +299,27 @@ async def delete_segments(video_id: UUID) -> None:
         await session.execute(delete(Segment).where(Segment.video_id == video_id))
 
 
+async def preflight_segments(video_id: UUID, segments: Sequence[SegmentRow]) -> None:
+    """Verify the migrated schema and video reservation before replacing any rows."""
+    for row in segments:
+        if row.ts_start_s < 0 or row.ts_end_s <= row.ts_start_s:
+            raise ValueError("Scene timestamps are invalid")
+        start_ms, end_ms = round(row.ts_start_s * 1000), round(row.ts_end_s * 1000)
+        if end_ms - start_ms > 5000 or row.frame_count < 1:
+            raise ValueError("Scene exceeds five seconds or has no retained frames")
+        if row.representative_timestamp_ms is not None and not (
+            start_ms <= row.representative_timestamp_ms < end_ms
+        ):
+            raise ValueError("Representative timestamp is outside the scene")
+    async with get_session_factory()() as session:
+        video = (
+            await session.execute(select(Video.ingestion_status).where(Video.id == video_id))
+        ).one_or_none()
+        if video is None or video[0] != "processing":
+            raise ValueError("Video is not reserved for ingestion")
+        await session.execute(select(Segment).where(Segment.video_id == video_id).limit(0))
+
+
 async def get_video_for_pipeline(video_id: UUID) -> Video | None:
     factory = get_session_factory()
     async with factory() as session:
@@ -320,7 +347,10 @@ async def _insert_all(models: Sequence[Any]) -> None:
 
 
 async def mark_video_indexed(
-    video_id: UUID, *, model_version: str, preview_object_key: str | None = None
+    video_id: UUID,
+    *,
+    model_version: str,
+    preview_object_key: str | None = None,
 ) -> bool:
     now = datetime.now(UTC)
     preview = (

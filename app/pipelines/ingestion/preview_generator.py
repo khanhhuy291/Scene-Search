@@ -19,6 +19,20 @@ if TYPE_CHECKING:
     from ml.anonymize import BlurRegionDetector
 
 
+def stage_scene_thumbnail(ctx: PipelineContext, scene: SceneRecord) -> Path:
+    """Stage a verified thumbnail before releasing a scene's source image buffers."""
+    root = ctx.open_temp_dir() / "media"
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / f"{scene.scene_id}.jpg"
+    frame = scene.representative_frame or scene.keyframes[len(scene.keyframes) // 2]
+    if frame.privacy_status != "verified" or frame.display_image is None:
+        raise ValueError("Thumbnail frame has no verified derivative")
+    with frame.display_image.convert("RGB") as thumbnail:
+        thumbnail.thumbnail((ctx.settings.dataset.thumbnail_max_edge,) * 2)
+        thumbnail.save(target, format="JPEG", quality=ctx.settings.dataset.thumbnail_quality)
+    return target
+
+
 async def generate_previews(
     ctx: PipelineContext,
     scenes: list[SceneRecord],
@@ -46,17 +60,8 @@ async def generate_previews(
                 f"thumbnail-{THUMBNAIL_VERSION}/{ctx.job_id}.jpg"
             )
             thumbnail_path = root / f"{scene.scene_id}.jpg"
-            frame = scene.keyframes[len(scene.keyframes) // 2]
-            if frame.privacy_status != "verified" or frame.display_image is None:
-                raise ValueError("Thumbnail frame has no verified derivative")
-            thumbnail = frame.display_image.convert("RGB")
-            try:
-                thumbnail.thumbnail((ctx.settings.dataset.thumbnail_max_edge,) * 2)
-                thumbnail.save(
-                    thumbnail_path, format="JPEG", quality=ctx.settings.dataset.thumbnail_quality
-                )
-            finally:
-                thumbnail.close()
+            if not thumbnail_path.is_file():
+                thumbnail_path = stage_scene_thumbnail(ctx, scene)
             await asyncio.to_thread(
                 derived_storage.upload_file,
                 thumbnail_key,

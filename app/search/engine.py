@@ -69,6 +69,7 @@ from search.query import (
     concept_embed_gloss,
     parse_query,
 )
+from search.scene_evidence import evaluate_scene, observation_matches
 
 SearchMode = Literal["hybrid", "visual", "caption", "qwen", "siglip"]
 
@@ -411,6 +412,23 @@ class SceneSearchEngine:
         # silence veto on frames that have no caption *and* a captionless
         # catalog. Exclusions still run in visual space for that corpus.
         captionless = view.captionless
+        # Selected instants cannot guarantee complete scene coverage. Scope this
+        # conservatively by structural filters, before semantic evidence filtering.
+        scope_filters = (
+            SearchFilters(
+                dataset=filters.dataset,
+                video_ids=filters.video_ids,
+                time_range_s=filters.time_range_s,
+            )
+            if filters is not None
+            else None
+        )
+        scope_has_scene_evidence = any(
+            frame.evidence is not None
+            and (not video_ids or frame.video_id in video_ids)
+            and self._matches_filters(frame, scope_filters, granularity)
+            for frame in view.frames
+        )
 
         pool = POOL_WITH_CONCEPTS if parsed.has_concepts else POOL_SEMANTIC_ONLY
         pool = min(max(pool, limit * 10), MAX_POOL)
@@ -575,7 +593,7 @@ class SceneSearchEngine:
                 matches=(),
                 total_videos=0,
                 total_keyframes=0,
-                exhaustive=parsed.has_concepts and not degraded,
+                exhaustive=parsed.has_concepts and not degraded and not scope_has_scene_evidence,
                 signals_used=(),
                 next_cursor=None,
                 took_ms=(time.perf_counter() - started) * 1000.0,
@@ -656,6 +674,7 @@ class SceneSearchEngine:
                 and bool(lexical_ids)
                 and strict_concepts
                 and not captionless
+                and not scope_has_scene_evidence
                 and not degraded
                 and unknown_candidates == 0
             ),
@@ -933,6 +952,8 @@ class SceneSearchEngine:
         corpus_captionless: bool = False,
         ocr: str = "",
         ocr_token: str | None = None,
+        keyframe: Keyframe | None = None,
+        filters: SearchFilters | None = None,
     ) -> CaptionVerdict | None:
         """Judge one keyframe from the precomputed concept arrays.
 
@@ -954,6 +975,11 @@ class SceneSearchEngine:
         confirm required concepts from text, so unknown stays unknown rather
         than becoming a global ``strict=False``.
         """
+
+        if keyframe is not None and keyframe.evidence is not None:
+            if ocr_token is not None and not _ocr_mentioned(ocr, ocr_token):
+                return None
+            return evaluate_scene(keyframe.evidence, parsed, strict=strict, filters=filters)
 
         confirmed: list[str] = []
         denied: list[str] = []
@@ -1047,6 +1073,8 @@ class SceneSearchEngine:
             keyframe_end = keyframe.end_timestamp_s or keyframe.timestamp_s
             if keyframe_end < start or keyframe.timestamp_s > end:
                 return False
+        if keyframe.evidence is not None:
+            return any(observation_matches(o, filters) for o in keyframe.evidence.observations)
         return True
 
     def _lexical_candidates(
@@ -1094,6 +1122,8 @@ class SceneSearchEngine:
                     corpus_captionless=view.captionless,
                     ocr=keyframe.ocr,
                     ocr_token=ocr_token,
+                    keyframe=keyframe,
+                    filters=filters,
                 )
                 if verdict is None:
                     continue
@@ -1178,7 +1208,13 @@ class SceneSearchEngine:
                 if not self._matches_filters(keyframe, filters, granularity):
                     continue
 
-                if position is not None:
+                if keyframe.evidence is not None:
+                    if ocr_token is not None and not _ocr_mentioned(keyframe.ocr, ocr_token):
+                        continue
+                    verdict = evaluate_scene(
+                        keyframe.evidence, parsed, strict=strict, filters=filters
+                    )
+                elif position is not None:
                     verdict = self._verdict_at(
                         position,
                         parsed,

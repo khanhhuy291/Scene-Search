@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from pydantic import BaseModel
 
 from api.deps import require_admin
+from core.ingestion import PIPELINE_VERSION
 from infrastructure.minio import get_derived_storage, get_raw_storage
 from repositories import corpus
 from repositories.task_status import (
@@ -31,7 +32,7 @@ from worker.tasks.ingestion import process_video_ingestion
 router = APIRouter(tags=["ingestion"], dependencies=[Depends(require_admin)])
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 _ALLOWED_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm"}
-_PIPELINE_VERSION = "scene-ingestion-v1"
+_PIPELINE_VERSION = PIPELINE_VERSION
 
 _CELERY_STATE_MAP = {
     "PENDING": TaskStatus.PENDING,
@@ -122,6 +123,23 @@ async def process_direct_uploaded_video(
         external_id=payload.filename,
     )
     await corpus.set_video_assets(video_id, raw_object_key=payload.raw_key)
+
+    if await corpus.is_video_indexed(video_id):
+        task_id = str(uuid4())
+        record = await create_task_status(
+            task_id,
+            payload.filename,
+            video_id=str(video_id),
+            celery_task_id=task_id,
+            pipeline_version=_PIPELINE_VERSION,
+        )
+        await update_task_status(
+            task_id,
+            TaskStatus.COMPLETED,
+            progress=100,
+            result={"video_id": str(video_id), "duplicate": True, "scenes_indexed": 0},
+        )
+        return record
 
     claimed = await corpus.claim_video_ingestion(video_id, allow_retry=True)
     if not claimed:

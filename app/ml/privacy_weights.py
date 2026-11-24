@@ -20,6 +20,12 @@ def resolve_privacy_weights(settings: MLSettings) -> Path:
         weights = settings.privacy_yolo_weights.expanduser()
         if not weights.is_file():
             raise ValueError("ML_PRIVACY_YOLO_WEIGHTS must point to an existing checkpoint")
+        digest = settings.privacy_yolo_weights_sha256
+        if digest is None:
+            raise ValueError("ML_PRIVACY_YOLO_WEIGHTS requires ML_PRIVACY_YOLO_WEIGHTS_SHA256")
+        with weights.open("rb") as checkpoint:
+            if hashlib.file_digest(checkpoint, "sha256").hexdigest() != digest.lower():
+                raise ValueError("Local YOLO checkpoint failed SHA-256 verification")
         return weights
 
     url = settings.privacy_yolo_weights_url

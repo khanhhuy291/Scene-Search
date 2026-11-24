@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -152,6 +153,9 @@ class Segment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("frames.id", ondelete="SET NULL"), nullable=True
     )
     embedding_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    representative_frame_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    representative_timestamp_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    thumbnail_object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     preview_object_key: Mapped[str | None] = mapped_column(Text, nullable=True)

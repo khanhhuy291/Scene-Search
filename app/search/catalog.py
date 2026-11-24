@@ -37,7 +37,12 @@ from typing import Any, TypeAlias
 from loguru import logger
 
 from core.config import get_settings
+from schemas.scene_evidence import SceneEvidence
+from search.query import TIME_TO_CONCEPT as _TIME_TO_CONCEPT
+from search.query import WEATHER_TO_CONCEPT as _WEATHER_TO_CONCEPT
 from search.query import Clause, Polarity, concept_pattern, resolve_concept, split_clauses
+from search.scene_evidence import scene_polarity
+from services.catalog_generation import CATALOG_GENERATION_KEY
 
 # Per-concept, per-keyframe polarity plus how often the caption named it.
 # Shared with the engine so a ``Polarity`` array is not passed as ``str``.
@@ -51,7 +56,7 @@ _THREAD_OFFLOAD_MIN_FRAMES = 1000
 # Qdrant page size for the initial read. Larger pages mean fewer round trips; far
 # larger ones start to matter for peak memory during deserialization.
 _SCROLL_PAGE = 1000
-_CATALOG_GENERATION_KEY = "scenesearch:search-catalog-generation"
+_CATALOG_GENERATION_KEY = CATALOG_GENERATION_KEY
 
 # Live Viettech frames are named ``frame_00034.jpg`` (or MOT-style
 # ``<video-id>-0000001.jpg``) and often omit ``timestamp_sec``. The trailing
@@ -83,7 +88,7 @@ def _frame_no_from_name(value: Any) -> int | None:
 
 
 def _infer_frame_no(payload: dict[str, Any]) -> int:
-    for key in ("frame_no", "frame_idx", "frame_index", "frame_id"):
+    for key in ("representative_frame_index", "frame_no", "frame_idx", "frame_index", "frame_id"):
         parsed = _int_or_none(payload.get(key))
         if parsed is not None:
             return parsed
@@ -95,7 +100,10 @@ def _infer_frame_no(payload: dict[str, Any]) -> int:
 
 
 def _infer_timestamp_s(payload: dict[str, Any], frame_no: int) -> float:
-    for key in ("video_second", "timestamp_sec", "ts_start_s", "timestamp_s"):
+    keys = ("video_second", "timestamp_sec", "ts_start_s", "timestamp_s")
+    if payload.get("granularity") == "segment":
+        keys = ("ts_start_s", "video_second", "timestamp_sec", "timestamp_s")
+    for key in keys:
         raw = payload.get(key)
         if raw is None or raw == "":
             continue
@@ -141,6 +149,9 @@ class Keyframe:
     objects: tuple[str, ...] = ()
     object_counts: dict[str, int] | None = None
     behaviors: tuple[str, ...] = ()
+    representative_timestamp_s: float | None = None
+    representative_frame_index: int | None = None
+    evidence: SceneEvidence | None = None
 
     @property
     def has_thumbnail(self) -> bool:
@@ -232,7 +243,7 @@ def keyframe_from_payload(point_id: str, payload: dict[str, Any]) -> Keyframe | 
     vehicles_list: list[str] = []
     people_list: list[str] = []
     for k, v in traffic.items():
-        if v and v != "none" and v != "0":
+        if v and v not in ("none", "0", "unknown"):
             if k in ("pedestrians", "people", "person"):
                 people_list.append(f"{k}: {v}")
             else:
@@ -250,6 +261,13 @@ def keyframe_from_payload(point_id: str, payload: dict[str, Any]) -> Keyframe | 
     )
 
     return Keyframe(
+        representative_timestamp_s=(
+            _int_or_none(payload.get("representative_timestamp_ms")) / 1000
+            if _int_or_none(payload.get("representative_timestamp_ms")) is not None
+            else None
+        ),
+        representative_frame_index=_int_or_none(payload.get("representative_frame_index")),
+        evidence=SceneEvidence.model_validate(meta) if meta.get("schema_version") == 2 else None,
         point_id=point_id,
         video_id=str(video_id),
         timestamp_s=max(0.0, timestamp_s),
@@ -284,33 +302,7 @@ def keyframe_from_payload(point_id: str, payload: dict[str, Any]) -> Keyframe | 
     )
 
 
-_WEATHER_TO_CONCEPT = {
-    "sunny": "clear_sky",
-    "clear": "clear_sky",
-    "sunshine": "clear_sky",
-    "rain": "rain",
-    "rainy": "rain",
-    "raining": "rain",
-    "drizzle": "rain",
-    "snow": "snow",
-    "snowy": "snow",
-    "fog": "fog",
-    "foggy": "fog",
-    "overcast": "overcast",
-    "cloudy": "overcast",
-}
 _WEATHER_CONCEPTS = frozenset(_WEATHER_TO_CONCEPT.values())
-_TIME_TO_CONCEPT = {
-    "daytime": "day",
-    "day": "day",
-    "night": "night",
-    "night-time": "night",
-    "nighttime": "night",
-    "dusk": "dusk",
-    "evening": "dusk",
-    "dawn": "dawn",
-    "sunrise": "dawn",
-}
 _TIME_CONCEPTS = frozenset(_TIME_TO_CONCEPT.values())
 _VEHICLE_CONCEPTS = frozenset({"car", "truck", "bus", "motorcycle", "cyclist"})
 
@@ -326,6 +318,9 @@ def structured_polarity(frame: Keyframe, concept: str) -> Polarity:
     observed absence even if the caption still mentions pedestrians, and a
     ``weather: sunny`` value is not rain no matter how the prose is phrased.
     """
+
+    if frame.evidence is not None:
+        return scene_polarity(frame.evidence, concept)
 
     if frame.weather:
         mapped = _WEATHER_TO_CONCEPT.get(_norm(frame.weather).replace(" ", ""))
@@ -389,6 +384,11 @@ def _resolve_concepts(
         mentions: list[int] = []
         conflicts = 0
         for frame, caption_clauses in zip(frames, clauses, strict=True):
+            if frame.evidence is not None:
+                polarity = scene_polarity(frame.evidence, concept)
+                polarities.append(polarity)
+                mentions.append(int(polarity == "present"))
+                continue
             caption_polarity, found = resolve_concept(caption_clauses, concept)
             structured = structured_polarity(frame, concept)
             if structured == "present":

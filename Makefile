@@ -6,6 +6,9 @@
 
 COMPOSE := docker compose --env-file app/.env -f docker-compose.yml
 LOCAL_COMPOSE := docker compose --env-file app/.env -f docker-compose.local.yml
+ifeq ($(CPU),1)
+LOCAL_COMPOSE += -f docker-compose.local.cpu.yml
+endif
 PYTHON := app/.venv/bin/python
 
 .PHONY: local-build local-up local-down local-logs local-ps local-admin

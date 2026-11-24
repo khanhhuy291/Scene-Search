@@ -15,12 +15,17 @@ from core.config import get_settings
 from core.privacy import is_anonymized_thumbnail
 from infrastructure.minio import get_derived_storage
 from infrastructure.qdrant import get_qdrant_client
-from infrastructure.redis import get_redis_client
 from pipelines.common.types import FrameRecord, SceneRecord
 from pipelines.ingestion.metadata_extractor import extract_scene_vlm_metadata
+from pipelines.ingestion.scene_metadata import (
+    aggregate_observations,
+    canonical_concepts,
+    metadata_payload,
+)
+from schemas.scene_evidence import SceneEvidence
+from services.catalog_generation import invalidate_catalog
 
 _FALLBACK_CAPTION = re.compile(r"^Dashcam driving scene at\s+\d+(?:\.\d+)?s\.$")
-_CATALOG_GENERATION_KEY = "scenesearch:search-catalog-generation"
 _PAGE_SIZE = 500
 _BATCH_SIZE = 8
 
@@ -34,6 +39,13 @@ def _caption(payload: dict[str, Any]) -> str:
 
 
 def _is_fallback(payload: dict[str, Any]) -> bool:
+    metadata = payload.get("metadata") or {}
+    if metadata.get("schema_version") == 2:
+        evidence = SceneEvidence.model_validate(metadata)
+        return any(
+            o.frame_index == evidence.representative_frame_index and o.status != "success"
+            for o in evidence.observations
+        )
     caption = _caption(payload)
     return not caption or bool(_FALLBACK_CAPTION.fullmatch(caption))
 
@@ -86,10 +98,19 @@ def _make_scene(point_id: str | int, payload: dict[str, Any]) -> SceneRecord:
 
     start_ms = int(payload.get("start_ms") or round(float(payload.get("ts_start_s") or 0) * 1000))
     end_ms = int(payload.get("end_ms") or round(float(payload.get("ts_end_s") or 0) * 1000))
-    frame_index = int(payload.get("frame_id") or 0)
+    frame_index = int(
+        payload["representative_frame_index"]
+        if payload.get("representative_frame_index") is not None
+        else payload.get("frame_id") or 0
+    )
+    frame_timestamp = (
+        int(payload["representative_timestamp_ms"])
+        if payload.get("representative_timestamp_ms") is not None
+        else start_ms
+    )
     image = _image_from_storage(thumbnail_key)
     frame = FrameRecord(
-        timestamp_ms=start_ms,
+        timestamp_ms=frame_timestamp,
         frame_index=frame_index,
         image=image,
         display_image=image,
@@ -102,7 +123,61 @@ def _make_scene(point_id: str | int, payload: dict[str, Any]) -> SceneRecord:
         end_ms=max(start_ms, end_ms),
         keyframes=[frame],
         thumbnail_key=thumbnail_key,
+        representative_frame=frame,
+        vlm_candidates=[frame],
     )
+
+
+def refresh_payload(original: dict[str, Any], fresh: dict[str, Any]) -> dict[str, Any]:
+    """Merge only the thumbnail observation; preserve evidence for other frames."""
+    fresh_evidence = SceneEvidence.model_validate(fresh["metadata"])
+    metadata = original.get("metadata") or {}
+    if metadata.get("schema_version") == 2:
+        old = SceneEvidence.model_validate(metadata)
+        refreshed = fresh_evidence.observations[0]
+        if (
+            refreshed.frame_index != old.representative_frame_index
+            or refreshed.timestamp_ms != old.representative_timestamp_ms
+        ):
+            raise ValueError("Refreshed thumbnail does not match the representative reference")
+        previous = next(o for o in old.observations if o.frame_index == refreshed.frame_index)
+        # Stored detections/behaviors are not recomputed by thumbnail-only VLM.
+        refreshed = refreshed.model_copy(
+            update={
+                "objects": previous.objects,
+                "object_counts": previous.object_counts,
+                "behaviors": previous.behaviors,
+                "present_concepts": sorted(
+                    set(refreshed.present_concepts) | canonical_concepts(previous.objects)
+                ),
+                "absent_concepts": sorted(
+                    set(refreshed.absent_concepts) - canonical_concepts(previous.objects)
+                ),
+            }
+        )
+        fresh = aggregate_observations(
+            [refreshed if o.frame_index == refreshed.frame_index else o for o in old.observations],
+            sampled_count=old.sampled_count,
+            representative_frame_index=old.representative_frame_index,
+            representative_timestamp_ms=old.representative_timestamp_ms,
+        )
+    else:
+        # A legacy segment's counts/behaviors may span the whole scene. Keep
+        # v1 rather than inventing per-thumbnail evidence for those fields.
+        observation = fresh_evidence.observations[0]
+        metadata = {**metadata, **observation.attributes, "caption": observation.caption}
+        detected = canonical_concepts(
+            list(original.get("objects") or []) + list(original.get("object_counts") or {})
+        )
+        positive = set(observation.present_concepts) | detected
+        fresh = {
+            "metadata": metadata,
+            "enrichment": fresh.get("enrichment"),
+            "present_concepts": sorted(positive),
+            "absent_concepts": sorted(set(observation.absent_concepts) - positive),
+        }
+    fresh["metadata"]["refresh_scope"] = "thumbnail_only"
+    return metadata_payload(fresh)
 
 
 async def refresh_fallback_captions(
@@ -136,68 +211,45 @@ async def refresh_fallback_captions(
                 failed += 1
                 failures.append({"point_id": str(point_id), "error": str(exc)[:240]})
 
+        updated_before_batch = updated
         try:
-            await extract_scene_vlm_metadata(scenes, max_concurrency=2)
-        except Exception as exc:
-            logger.exception("Caption refresh batch failed: {error}", error=exc)
-            failed += len(scenes)
-            failures.extend(
-                {"point_id": str(point_id), "error": str(exc)[:240]} for point_id in point_ids
-            )
-            for scene in scenes:
-                scene.keyframes[0].image.close()
-            scenes = []
-            point_ids = []
-
-        for point_id, scene in zip(point_ids, scenes, strict=True):
-            frame = scene.keyframes[0]
-            vlm_data = frame.metadata.get("vlm_data") or {}
-            metadata = vlm_data.get("metadata") or {}
-            caption = str(metadata.get("caption") or "").strip()
-            if not caption or _FALLBACK_CAPTION.fullmatch(caption):
-                failed += 1
-                failures.append(
-                    {"point_id": str(point_id), "error": "VLM returned fallback caption"}
-                )
-                continue
-
-            tags = metadata.get("retrieval_tags") or []
-            payload = {
-                "metadata": metadata,
-                "caption": caption,
-                "retrieval_tags": tags,
-                "present_concepts": vlm_data.get("present_concepts") or [],
-                "absent_concepts": vlm_data.get("absent_concepts") or [],
-            }
             try:
-                await qdrant.set_payload(
-                    collection_name=settings.qdrant.collection,
-                    payload=payload,
-                    points=[point_id],
-                    wait=True,
-                )
-                updated += 1
+                await extract_scene_vlm_metadata(scenes, settings=settings)
             except Exception as exc:
-                failed += 1
-                failures.append({"point_id": str(point_id), "error": str(exc)[:240]})
-                logger.exception(
-                    "Unable to update caption payload for point {point_id}", point_id=point_id
+                logger.exception("Caption refresh batch failed: {error}", error=exc)
+                failed += len(scenes)
+                failures.extend(
+                    {"point_id": str(point_id), "error": str(exc)[:240]} for point_id in point_ids
                 )
-
-        for scene in scenes:
-            scene.keyframes[0].image.close()
+            else:
+                for point_id, scene in zip(point_ids, scenes, strict=True):
+                    try:
+                        fresh = scene.metadata["vlm_data"]
+                        if fresh["enrichment"]["status"] != "success":
+                            raise ValueError("Thumbnail enrichment did not succeed")
+                        payload = refresh_payload(dict(batch)[point_id], fresh)
+                        await qdrant.set_payload(
+                            collection_name=settings.qdrant.collection,
+                            payload=payload,
+                            points=[point_id],
+                            wait=True,
+                        )
+                        updated += 1
+                    except Exception as exc:
+                        failed += 1
+                        failures.append({"point_id": str(point_id), "error": str(exc)[:240]})
+                        logger.exception(
+                            "Unable to refresh caption for point {point_id}", point_id=point_id
+                        )
+        finally:
+            for scene in scenes:
+                scene.keyframes[0].close()
+            if updated > updated_before_batch:
+                await invalidate_catalog()
 
         if progress:
             done = min(batch_start + len(batch), total)
             await progress(round(done * 100 / total))
-
-    if updated:
-        try:
-            await get_redis_client().incr(_CATALOG_GENERATION_KEY)
-        except Exception:
-            # Search remains correct after the catalog TTL; Redis invalidation
-            # only controls how quickly the changed captions become visible.
-            logger.exception("Could not signal search catalog reload after caption refresh")
 
     return {
         "selected": total,

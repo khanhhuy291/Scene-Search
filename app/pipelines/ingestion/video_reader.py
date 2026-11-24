@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from PIL import Image
 
 from infrastructure.minio import MinIOStorage
@@ -18,6 +19,7 @@ from pipelines.common.errors import (
     VideoValidationError,
 )
 from pipelines.common.types import FrameRecord
+from pipelines.ingestion.timeline import DecodeTimeline, VideoProbe, frame_timestamp_ms
 
 
 def _snap_rotation_degrees(value: float) -> int:
@@ -96,7 +98,7 @@ async def acquire_video(ctx: PipelineContext, raw_storage: MinIOStorage) -> Path
     raise RetryableVideoAcquireError("Unable to download raw video", stage="acquire") from last_exc
 
 
-def validate_video(path: Path, *, max_duration_s: float, max_pixels: int) -> None:
+def validate_video(path: Path, *, max_duration_s: float, max_pixels: int) -> VideoProbe:
     """Probe the acquired media before expensive decoding or inference."""
     try:
         import av
@@ -125,13 +127,30 @@ def validate_video(path: Path, *, max_duration_s: float, max_pixels: int) -> Non
                     f"Video duration {duration_s:.2f}s exceeds the {max_duration_s:.2f}s limit",
                     stage="validate",
                 )
+            start_ms = (
+                round(float(stream.start_time * stream.time_base) * 1000)
+                if stream.start_time is not None and stream.time_base is not None
+                else 0
+            )
+            return VideoProbe(
+                start_ms=max(0, start_ms),
+                end_ms=max(0, start_ms) + round(duration_s * 1000)
+                if duration_s is not None
+                else None,
+                duration_source="stream"
+                if stream.duration is not None
+                else "container"
+                if duration_s is not None
+                else "unavailable",
+                time_base=str(stream.time_base) if stream.time_base is not None else None,
+            )
     except VideoValidationError:
         raise
     except Exception as exc:
         raise VideoValidationError("Unable to validate video", stage="validate") from exc
 
 
-def decode_video(path: Path) -> Iterator[FrameRecord]:
+def decode_video(path: Path, *, timeline: DecodeTimeline | None = None) -> Iterator[FrameRecord]:
     """Decode sequentially without materializing or dumping frames."""
     try:
         import av
@@ -143,9 +162,24 @@ def decode_video(path: Path) -> Iterator[FrameRecord]:
                 raise VideoDecodeError("Media has no video stream", stage="decode")
             stream = container.streams.video[0]
             fallback_fps = float(stream.average_rate or stream.guessed_rate or 1)
+            previous_ms: int | None = None
             for index, frame in enumerate(container.decode(video=0)):
-                timestamp_s = float(frame.time) if frame.time is not None else index / fallback_fps
-                timestamp_ms = max(0, round(timestamp_s * 1000))
+                timestamp_ms = frame_timestamp_ms(
+                    frame.time, index=index, rate=fallback_fps, previous_ms=previous_ms
+                )
+                if frame.time is not None and timestamp_ms != round(frame.time * 1000):
+                    logger.warning("Repaired source timestamp on frame {index}", index=index)
+                previous_ms = timestamp_ms
+                if timeline is not None:
+                    duration = getattr(frame, "duration", None)
+                    measured = duration is not None and duration > 0 and frame.time_base is not None
+                    interval_ms = (
+                        max(1, round(float(duration * frame.time_base) * 1000))
+                        if measured
+                        else max(1, round(1000 / fallback_fps))
+                    )
+                    timeline.end_ms = timestamp_ms + interval_ms
+                    timeline.duration_source = "decoded_frame" if measured else "estimated_rate"
                 image = frame.to_image().convert("RGB")
                 image = apply_display_rotation(image, display_rotation_ccw(frame, stream))
                 yield FrameRecord(

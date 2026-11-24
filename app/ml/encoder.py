@@ -16,6 +16,7 @@ from loguru import logger
 from core.config import MLSettings, get_settings
 from ml.device import resolve_device, resolve_dtype
 from ml.qwen_encoder import QwenVLEncoder
+from ml.vectors import normalize_vectors
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from PIL.Image import Image
@@ -143,8 +144,10 @@ class SigLIPEncoder:
     # -- encoding ----------------------------------------------------------
 
     def _normalize(self, features: Any) -> list[Vector]:
-        features = features / features.norm(dim=-1, keepdim=True)
-        return [[float(value) for value in row] for row in features.float().cpu()]
+        try:
+            return normalize_vectors(features.float().cpu().tolist(), dimension=self.dimension)
+        except ValueError as exc:
+            raise EncoderError(str(exc)) from exc
 
     def _encode_remote(
         self,
@@ -228,7 +231,9 @@ class SigLIPEncoder:
                         }
                         data = _post_with_retry(payload)
                         vectors.extend(data.get("embeddings", []))
-            return vectors
+            return normalize_vectors(
+                vectors, dimension=self.dimension, count=len(texts or images or [])
+            )
         except httpx.HTTPStatusError as exc:
             raise EncoderError(
                 f"Remote SigLIP embedding HTTP {exc.response.status_code}: {exc.response.text}"

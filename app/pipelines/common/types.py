@@ -46,6 +46,11 @@ class FrameRecord:
     qwen_embedding: list[float] | None = None
     display_image: Image | None = None
 
+    def close(self) -> None:
+        self.image.close()
+        if self.display_image is not None and self.display_image is not self.image:
+            self.display_image.close()
+
 
 @dataclass
 class SceneRecord:
@@ -59,6 +64,9 @@ class SceneRecord:
     thumbnail_key: str | None = None
     preview_key: str | None = None
     privacy_status: PrivacyStatus = "pending"
+    siglip_sum: list[float] | None = None
+    representative_frame: FrameRecord | None = None
+    vlm_candidates: list[FrameRecord] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

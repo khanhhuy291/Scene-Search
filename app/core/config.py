@@ -274,6 +274,17 @@ class MLSettings(_BaseSettings):
             raise ValueError("QWEN_EMBEDDING_URL must start with http:// or https://")
         return url.rstrip("/")
 
+    @field_validator("privacy_yolo_weights_sha256")
+    @classmethod
+    def normalize_privacy_digest(cls, value: str | None) -> str | None:
+        return value.lower() if value is not None else None
+
+    @model_validator(mode="after")
+    def local_privacy_checkpoint_requires_digest(self) -> MLSettings:
+        if self.privacy_yolo_weights is not None and self.privacy_yolo_weights_sha256 is None:
+            raise ValueError("ML_PRIVACY_YOLO_WEIGHTS requires ML_PRIVACY_YOLO_WEIGHTS_SHA256")
+        return self
+
 
 class VideoSettings(_BaseSettings):
     """Decoding, sampling, and preview-encoding settings (ADR-0004)."""
@@ -296,8 +307,20 @@ class VideoSettings(_BaseSettings):
 
     # Segment aggregation: consecutive frames are mean-pooled into clip-level
     # vectors so a query can return a watchable span rather than a still.
-    segment_seconds: float = Field(default=5.0, gt=0, le=60)
+    segment_seconds: float = Field(default=5.0, gt=0, le=5)
     segment_gap_tolerance_s: float = Field(default=1.0, ge=0, le=10)
+    # Content boundaries use the existing local defaults; thresholds remain tunable.
+    # These are cosine distances (1 - cosine); increasing them suppresses more boundaries.
+    # The global distance also limits deviation from the pending centroid for confirmation.
+    scene_local_distance: float = Field(default=0.10, ge=0, le=2, allow_inf_nan=False)
+    scene_global_distance: float = Field(default=0.15, ge=0, le=2, allow_inf_nan=False)
+    scene_min_duration_s: float = Field(default=2.0, ge=0, allow_inf_nan=False)
+    scene_confirmation_s: float = Field(default=0.4, ge=0, allow_inf_nan=False)
+    vlm_max_frames: int = Field(default=1, ge=1, le=3)
+    vlm_novelty_distance: float | None = Field(default=None, ge=0, le=2, allow_inf_nan=False)
+    vlm_concurrency: int = Field(default=2, ge=1)
+    vlm_timeout_s: float = Field(default=30, gt=0, allow_inf_nan=False)
+    vlm_attempts_per_frame: int = Field(default=2, ge=1)
 
     # Full-video derived playback preserves source imagery/cadence. Encoding
     # settings apply to the non-H.264 fallback; preview_fps is a legacy option.
@@ -312,6 +335,8 @@ class VideoSettings(_BaseSettings):
 
     @model_validator(mode="after")
     def segment_must_span_multiple_samples(self) -> VideoSettings:
+        if self.vlm_max_frames > 1 and self.vlm_novelty_distance is None:
+            raise ValueError("Multi-frame VLM requires an explicit novelty distance")
         # A segment shorter than one sample interval would contain at most one
         # frame, which makes segment granularity indistinguishable from frame
         # granularity while still doubling the index size.
@@ -320,6 +345,11 @@ class VideoSettings(_BaseSettings):
                 f"VIDEO_SEGMENT_SECONDS={self.segment_seconds} is too short to hold two "
                 f"frames at VIDEO_SAMPLE_FPS={self.sample_fps}"
             )
+        if (
+            self.scene_min_duration_s > self.segment_seconds
+            or self.scene_confirmation_s >= self.segment_seconds
+        ):
+            raise ValueError("Content segmentation durations must fit the scene maximum")
         return self
 
 

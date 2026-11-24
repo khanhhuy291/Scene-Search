@@ -22,7 +22,9 @@ from loguru import logger
 
 from core.config import get_settings
 from infrastructure.qdrant import get_qdrant_client
+from ml.vectors import normalize_vectors
 from search.points import Granularity, build_filter
+from services.catalog_generation import invalidate_catalog
 
 # Chosen so a full 50-video corpus is a few hundred requests rather than tens of
 # thousands. Larger batches mostly trade request count for peak memory in the
@@ -40,26 +42,23 @@ def _check_dimension(points: Sequence[Any]) -> None:
         return
 
     expected = get_settings().qdrant.vector_size
-    vector = getattr(points[0], "vector", None)
-    if vector is None:
-        return
-
-    if isinstance(vector, dict):
-        for name, vec in vector.items():
-            actual = len(vec) if vec is not None else 0
-            if actual and actual not in (768, 2048):
-                raise ValueError(
-                    f"Named vector {name} dimension {actual} is not supported (expected 768 or 2048)."
-                )
-        return
-
-    actual = len(vector) if vector is not None else 0
-    if actual and actual != expected and actual not in (768, 2048):
-        raise ValueError(
-            f"Vector dimension {actual} does not match QDRANT_VECTOR_SIZE {expected}. "
-            "The encoder and the collection disagree: either ML_ENCODER_NAME changed "
-            "without rebuilding the collection, or two encoders are in use."
-        )
+    for point in points:
+        vectors = getattr(point, "vector", None)
+        if vectors is None:
+            raise ValueError("Point has no vector")
+        if isinstance(vectors, dict):
+            if not vectors:
+                raise ValueError("Point has no named vectors")
+            for name, vector in vectors.items():
+                dimension = {"qwen": 2048, "siglip": 768}.get(name)
+                if dimension is None:
+                    raise ValueError(f"Unsupported named vector {name}")
+                normalize_vectors([vector], dimension=dimension)
+        else:
+            try:
+                normalize_vectors([vectors], dimension=expected)
+            except ValueError as exc:
+                raise ValueError(f"QDRANT_VECTOR_SIZE: {exc}") from exc
 
 
 async def _refuse_if_read_only(qdrant: Any) -> None:
@@ -78,35 +77,65 @@ async def _refuse_if_read_only(qdrant: Any) -> None:
     rather than something the next reader has to know.
     """
 
-    from infrastructure.qdrant import is_read_only_collection
+    from infrastructure.qdrant import can_write_collection
 
     collection = _collection()
     try:
         info = await qdrant.get_collection(collection)
-    except Exception:  # noqa: BLE001 - an unreachable collection is the caller's problem
-        return
+    except Exception as exc:
+        raise RuntimeError("Could not verify collection write ownership") from exc
     vectors = getattr(getattr(info.config, "params", None), "vectors", None)
-    if isinstance(vectors, dict) and is_read_only_collection(vectors):
-        settings = get_settings().qdrant
-        if settings.allow_named_vector_writes:
-            collection_names = set(vectors)
-            if "qwen" in collection_names and "bgem3" not in collection_names:
-                return
-            if settings.write_vector_name and settings.write_vector_name in collection_names:
-                return
-        selected = vectors.get(settings.write_vector_name)
-        if (
-            settings.write_vector_name
-            and selected is not None
-            and getattr(selected, "size", None) == settings.vector_size
-        ):
-            return
+    if not can_write_collection(vectors, get_settings().qdrant):
         raise RuntimeError(
             f"Refusing to write to {collection!r}: it uses the hybrid named-vector "
             f"layout ({', '.join(sorted(vectors))}) built by another workstream. "
             "This process attaches to that collection read-only. Point "
             "QDRANT_COLLECTION at a collection this service owns before ingesting."
         )
+
+
+async def preflight_points(points: Sequence[Any], *, client: Any | None = None) -> None:
+    """Validate every vector and target schema before a replacement may delete data."""
+    _check_dimension(points)
+    qdrant = client or get_qdrant_client()
+    await _refuse_if_read_only(qdrant)
+    info = await qdrant.get_collection(_collection())
+    required_indexes = {"video_id"}
+    if any(
+        (getattr(point, "payload", None) or {}).get("granularity") == "segment" for point in points
+    ):
+        required_indexes.update(
+            {
+                "granularity",
+                "ts_start_s",
+                "ts_end_s",
+                "present_concepts",
+                "absent_concepts",
+                "weather",
+                "timeofday",
+                "scene",
+                "objects",
+            }
+        )
+    missing = required_indexes - set(info.payload_schema or {})
+    if missing:
+        raise ValueError(f"Target collection is missing payload indexes: {sorted(missing)}")
+    configured = info.config.params.vectors
+    for point in points:
+        vectors = point.vector
+        if isinstance(vectors, dict):
+            if not isinstance(configured, dict):
+                raise ValueError("Target collection does not support named vectors")
+            for name, vector in vectors.items():
+                target = configured.get(name)
+                if target is None or target.size != len(vector) or str(target.distance) != "Cosine":
+                    raise ValueError(f"Incompatible target schema for vector {name}")
+        elif (
+            isinstance(configured, dict)
+            or configured.size != len(vectors)
+            or str(configured.distance) != "Cosine"
+        ):
+            raise ValueError("Incompatible target vector schema")
 
 
 async def upsert_points(
@@ -195,6 +224,7 @@ async def delete_by_video(
         points_selector=models.FilterSelector(filter=condition),
         wait=True,
     )
+    await invalidate_catalog()
     logger.info(
         "Deleted all points for video {video_id} from {collection}",
         video_id=video_id,
@@ -245,9 +275,29 @@ async def reindex_video(
     filter matches on ``video_id`` and cannot distinguish old points from new.
     """
 
+    if not video_id:
+        raise ValueError("video_id must not be empty")
+    for point in points:
+        payload = getattr(point, "payload", None)
+        if payload is not None and payload.get("video_id") != video_id:
+            raise ValueError("Replacement point belongs to another video")
     qdrant = client or get_qdrant_client()
+    await preflight_points(points, client=qdrant)
     await delete_by_video(video_id, client=qdrant)
-    return await upsert_points(points, batch_size=batch_size, client=qdrant)
+    try:
+        written = await upsert_points(points, batch_size=batch_size, client=qdrant)
+        await invalidate_catalog()
+        return written
+    except Exception:
+        # The old generation was already removed. Only this owner knows that
+        # deleting partial replacement points cannot erase untouched old points.
+        try:
+            await delete_by_video(video_id, client=qdrant)
+        except Exception:
+            logger.exception(
+                "Could not remove partial replacement for {video_id}", video_id=video_id
+            )
+        raise
 
 
 __all__ = [
@@ -255,5 +305,6 @@ __all__ = [
     "count_points",
     "delete_by_video",
     "reindex_video",
+    "preflight_points",
     "upsert_points",
 ]

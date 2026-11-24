@@ -6,6 +6,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING
 
 from ml.anonymize import anonymize_frame
+from pipelines.ingestion.timeline import frame_timestamp_ms
 from pipelines.ingestion.video_reader import apply_display_rotation, display_rotation_ccw
 
 if TYPE_CHECKING:
@@ -57,9 +58,12 @@ def write_anonymized_playback(
                     with redacted.resize((stream.width, stream.height)) as resized:
                         encoded = av.VideoFrame.from_image(resized)
 
-            timestamp_s = frame.time if frame.time is not None else index / float(rate)
-            earliest = timestamps[-1] + 1 if timestamps else 0
-            timestamp = max(earliest, round(timestamp_s * 1000))
+            timestamp = frame_timestamp_ms(
+                frame.time,
+                index=index,
+                rate=float(rate),
+                previous_ms=timestamps[-1] if timestamps else None,
+            )
             timestamps.append(timestamp)
             encoded.pts = timestamp
             encoded.time_base = _TIME_BASE

@@ -9,10 +9,14 @@ from uuid import UUID
 from celery import Task
 from loguru import logger
 
+from core.ingestion import PIPELINE_VERSION
 from infrastructure.postgres import close_postgres
 from infrastructure.qdrant import close_qdrant
 from infrastructure.redis import close_redis
-from pipelines.common.errors import IngestionCancelledError, RetryablePipelineError
+from pipelines.common.errors import (
+    IngestionCancelledError,
+    RetryablePipelineError,
+)
 from pipelines.ingestion.orchestrator import run_ingestion_pipeline
 from repositories import corpus
 from repositories.task_status import TaskStatusStoreError, update_task_status
@@ -49,7 +53,12 @@ async def _run_ingestion(
         async def progress(value: int, stage: str) -> None:
             await _report_progress(task, task_id, progress=value, stage=stage)
 
-        result = await run_ingestion_pipeline(job_id=task_id, video_id=video_id, progress=progress)
+        result = await run_ingestion_pipeline(
+            job_id=task_id,
+            video_id=video_id,
+            progress=progress,
+            pipeline_version=PIPELINE_VERSION,
+        )
         await update_task_status(
             task_id,
             TaskStatus.COMPLETED,

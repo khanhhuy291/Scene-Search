@@ -37,6 +37,33 @@ from typing import Literal
 
 Polarity = Literal["present", "absent", "unknown"]
 
+WEATHER_TO_CONCEPT = {
+    "sunny": "clear_sky",
+    "clear": "clear_sky",
+    "sunshine": "clear_sky",
+    "rain": "rain",
+    "rainy": "rain",
+    "raining": "rain",
+    "drizzle": "rain",
+    "snow": "snow",
+    "snowy": "snow",
+    "fog": "fog",
+    "foggy": "fog",
+    "overcast": "overcast",
+    "cloudy": "overcast",
+}
+TIME_TO_CONCEPT = {
+    "daytime": "day",
+    "day": "day",
+    "night": "night",
+    "night-time": "night",
+    "nighttime": "night",
+    "dusk": "dusk",
+    "evening": "dusk",
+    "dawn": "dawn",
+    "sunrise": "dawn",
+}
+
 # Surface forms, per canonical concept, as they appear in captions *and* as users
 # type them -- one lexicon serves both directions, so "pedestrians" in a query
 # and "pedestrian" in a caption resolve to the same concept.

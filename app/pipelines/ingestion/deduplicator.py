@@ -36,6 +36,8 @@ def filter_near_duplicates(
     enabled: bool,
     threshold: float,
     stats: DedupStats | None = None,
+    protected_frame_indices: frozenset[int] = frozenset(),
+    close_dropped: bool = True,
 ) -> Iterator[FrameRecord]:
     stats = stats or DedupStats()
     previous: FrameRecord | None = None
@@ -50,10 +52,11 @@ def filter_near_duplicates(
             and cosine(previous.embedding, frame.embedding) >= threshold
         )
         if duplicate:
-            previous.covers_end_ms = frame.covers_end_ms or frame.timestamp_ms
-            frame.image.close()
-            if frame.display_image is not None:
-                frame.display_image.close()
+            previous.covers_end_ms = (
+                frame.covers_end_ms if frame.covers_end_ms is not None else frame.timestamp_ms
+            )
+            if close_dropped and frame.frame_index not in protected_frame_indices:
+                frame.close()
             continue
         stats.kept += 1
         previous = frame

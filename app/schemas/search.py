@@ -208,6 +208,8 @@ class SearchResult(BaseModel):
     # only descriptive metadata that exists for every point.
     caption: str | None = None
     frame_no: int | None = Field(default=None, ge=0)
+    representative_timestamp_s: float | None = Field(default=None, ge=0)
+    representative_frame_index: int | None = Field(default=None, ge=0)
 
     # How many keyframes in this video satisfied the query, this one included.
     # One result per video keeps the grid readable; this is how the user learns
