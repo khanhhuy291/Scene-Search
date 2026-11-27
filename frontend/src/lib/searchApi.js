@@ -38,6 +38,18 @@ export const formatTimestamp = (startSeconds, endSeconds) => {
 /** Turn a snake_case concept name into something readable in a chip. */
 export const humanizeConcept = (concept) => concept.replace(/_/g, ' ')
 
+const knownAttribute = (...values) => values.find(
+  value => typeof value === 'string' && value.trim() && value.trim().toLowerCase() !== 'unknown'
+)?.trim() || null
+
+export const sceneAttributes = (value) => ({
+  weather: knownAttribute(value.weather, value.metadata?.scene?.weather),
+  timeOfDay: knownAttribute(value.time_of_day, value.timeOfDay, value.metadata?.scene?.time_of_day),
+  sceneType: knownAttribute(
+    value.scene_type, value.sceneType, value.metadata?.scene?.scene_type, value.metadata?.scene?.road_type
+  )
+})
+
 /** Attach media fragment `#t=start,end` for bound segment playback. */
 export const withTimeFragment = (url, startSeconds, endSeconds) => {
   if (!url) return url
@@ -73,9 +85,7 @@ const mapMoment = (moment, fallback, index, { isPrimary = false } = {}) => {
     caption: moment.caption || moment.description || fallback.description,
     thumbnail: moment.thumbnail_url || moment.thumbnail || fallback.thumbnail,
     frameNo: moment.frame_no ?? moment.frameNo ?? null,
-    weather: moment.weather || null,
-    timeOfDay: moment.time_of_day || null,
-    sceneType: moment.scene_type || null,
+    ...sceneAttributes(moment),
     retrievalTags: moment.retrieval_tags || [],
     isPrimary: Boolean(moment.is_primary ?? isPrimary),
     relevance: moment.relevance || (isPrimary ? 'best match' : 'also matched')
@@ -147,9 +157,7 @@ export const toScene = (result, index) => {
     confirmed: result.confirmed ?? [],
     denied: result.denied ?? [],
     contradictionNote: result.contradiction_note || null,
-    weather: result.weather || result.metadata?.scene?.weather || null,
-    timeOfDay: result.time_of_day || result.metadata?.scene?.time_of_day || null,
-    sceneType: result.scene_type || result.metadata?.scene?.scene_type || result.metadata?.scene?.road_type || null,
+    ...sceneAttributes(result),
     retrievalTags: result.retrieval_tags || result.metadata?.retrieval_tags || [],
     metadata: result.metadata || null,
     objects: result.objects || [],

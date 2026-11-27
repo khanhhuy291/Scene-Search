@@ -14,6 +14,7 @@ from PIL import Image
 from qdrant_client import AsyncQdrantClient, models
 
 from core.config import get_settings
+from core.ingestion import SEQUENCE_METADATA_PROMPT_VERSION
 from core.privacy import is_anonymized_thumbnail
 from infrastructure.minio import get_derived_storage
 from infrastructure.qdrant import get_qdrant_client
@@ -43,7 +44,10 @@ def _caption(payload: dict[str, Any]) -> str:
 def _is_fallback(payload: dict[str, Any]) -> bool:
     metadata = payload.get("metadata") or {}
     evidence = SceneEvidence.model_validate(metadata)
-    return any(o.status != "success" for o in evidence.observations) or not _caption(payload)
+    return any(
+        o.status != "success" or o.prompt_version != SEQUENCE_METADATA_PROMPT_VERSION
+        for o in evidence.observations
+    ) or not _caption(payload)
 
 
 def _image_from_storage(object_key: str) -> Image.Image:
@@ -173,7 +177,7 @@ async def refresh_fallback_captions(
     video_ids: set[str] | None = None,
     progress: ProgressCallback | None = None,
 ) -> dict[str, Any]:
-    """Refresh incomplete published chunks from their original timestamped VLM sequence."""
+    """Refresh incomplete or outdated chunks from their original timestamped VLM sequence."""
 
     settings = get_settings()
     if not settings.llm.api_key or not settings.llm.api_key.get_secret_value():

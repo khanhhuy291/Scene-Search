@@ -11,7 +11,7 @@ import {
   Sparkles,
   AlertTriangle
 } from "lucide-react"
-import { humanizeConcept, withTimeFragment } from "../../lib/searchApi"
+import { humanizeConcept, sceneAttributes, withTimeFragment } from "../../lib/searchApi"
 import { playSegment, enforceSegmentEnd, restartSegmentOnPlay } from "../../lib/segmentPlayback"
 import { useAuth } from "../../context/AuthContext"
 import { useDataset } from "../../context/DatasetContext"
@@ -38,6 +38,8 @@ const sceneFromMoment = (scene, moment) => ({
   endSeconds: moment.endSeconds,
   thumbnail: moment.thumbnail || scene.thumbnail,
   frameNo: moment.frameNo,
+  ...sceneAttributes(moment),
+  retrievalTags: moment.retrievalTags || [],
   previewUrl: withTimeFragment(
     scene.previewBaseUrl || scene.previewUrl,
     moment.startSeconds
@@ -58,6 +60,8 @@ export const SceneCard = ({ scene, searchMeta = null }) => {
               caption: scene.description,
               thumbnail: scene.thumbnail,
               frameNo: scene.frameNo,
+              ...sceneAttributes(scene),
+              retrievalTags: scene.retrievalTags || [],
               isPrimary: true,
               relevance: "best match"
             }
@@ -76,6 +80,11 @@ export const SceneCard = ({ scene, searchMeta = null }) => {
   const { addToast } = useToast()
 
   const activeMoment = moments.find((m) => m.id === activeMomentId) || moments[0]
+  const attributes = sceneAttributes(scene)
+  const activeAttributes = sceneAttributes(activeMoment)
+  const activeAttributeLabel = [
+    activeAttributes.timeOfDay, activeAttributes.weather, activeAttributes.sceneType
+  ].filter(Boolean).join(" · ")
   const videoDraftIds = (activeDraft?.items || [])
     .filter((item) => item.videoId === scene.videoId)
     .map((item) => item.id)
@@ -297,9 +306,9 @@ export const SceneCard = ({ scene, searchMeta = null }) => {
                   <span>{scene.denied.length} contradicting</span>
                 </span>
               )}
-              {(scene.timeOfDay || scene.weather) && (
+              {(attributes.timeOfDay || attributes.weather) && (
                 <span className="px-2 py-0.5 bg-stone-100 dark:bg-stone-800/80 border border-stone-300 dark:border-stone-700 text-stone-600 dark:text-stone-300 text-[10px] font-mono uppercase">
-                  {scene.timeOfDay || "—"} · {scene.weather || "—"}
+                  {[attributes.timeOfDay, attributes.weather].filter(Boolean).join(" · ")}
                 </span>
               )}
             </div>
@@ -510,12 +519,12 @@ export const SceneCard = ({ scene, searchMeta = null }) => {
 
               {/* ATTRIBUTE TAGS */}
               <div className="flex flex-wrap gap-2 text-xs font-mono">
-                {(scene.timeOfDay || scene.weather || scene.sceneType) && (
+                {activeAttributeLabel && (
                   <span className="px-2.5 py-1 bg-[#F7F4EE] dark:bg-stone-800 border border-black dark:border-stone-700 uppercase">
-                    {scene.timeOfDay || "—"} · {scene.weather || "—"} · {scene.sceneType || "—"}
+                    {activeAttributeLabel}
                   </span>
                 )}
-                {(scene.retrievalTags || []).map((tag) => (
+                {(activeMoment.retrievalTags || []).map((tag) => (
                   <span
                     key={tag}
                     className="px-2 py-0.5 bg-white dark:bg-stone-800 border border-black/30 dark:border-stone-700 text-stone-600 dark:text-stone-300 text-[11px]"

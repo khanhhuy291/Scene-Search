@@ -160,6 +160,33 @@ class VLMSequenceResult(BaseModel):
         return self
 
 
+class VLMSceneAttributes(SceneAttributes):
+    """Wire contract: assess every attribute explicitly, even when it is unknown."""
+
+    scene_type: Literal["residential", "urban", "highway", "rural", "tunnel", "parking", "unknown"]
+    road_type: Literal["residential", "city_street", "highway", "country_road", "unknown"]
+    weather: Literal["clear", "rainy", "foggy", "overcast", "snowy", "unknown"]
+    time_of_day: Literal["day", "night", "dusk", "dawn", "unknown"]
+    lighting: Literal["daylight", "artificial", "dim", "dark", "unknown"]
+    road_surface: Literal["dry", "wet", "snowy", "muddy", "unknown"]
+    visibility: Literal["high", "good", "medium", "low", "unknown"]
+    traffic_density: Literal["empty", "low", "medium", "heavy", "unknown"]
+
+
+class VLMResponseMetadata(VLMMetadata):
+    scene: VLMSceneAttributes
+
+
+class VLMResponseObservation(VLMFrameObservation):
+    metadata: VLMResponseMetadata
+
+
+class VLMSequenceResponse(VLMSequenceResult):
+    """Strict provider response; existing stored evidence keeps its legacy defaults."""
+
+    observations: list[VLMResponseObservation] = Field(min_length=1)
+
+
 def unknown_metadata(
     objects: list[str], *, status: str, reason: str, timestamp_ms: int
 ) -> dict[str, Any]:
