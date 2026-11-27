@@ -10,7 +10,10 @@ from db.models.corpus import (
     Frame,
     FrameAttribute,
     FrameObject,
+    SceneChunkKeyframe,
+    SceneKeyframe,
     Segment,
+    SemanticScene,
     Video,
 )
 from db.models.ingestion_task import IngestionTask
@@ -37,6 +40,9 @@ __all__ = [
     "ReviewDecision",
     "ReviewSession",
     "Segment",
+    "SemanticScene",
+    "SceneKeyframe",
+    "SceneChunkKeyframe",
     "SessionStatus",
     "TimestampMixin",
     "UUIDPrimaryKeyMixin",

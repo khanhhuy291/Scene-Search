@@ -17,7 +17,7 @@ import { useToast } from '../../context/ToastContext'
 
 export function BrutalistAuthModal({ isOpen, initialMode = 'login', redirectOnSuccess = false, onClose }) {
   const [mode, setMode] = useState(initialMode) // 'login' | 'register'
-  const { login, register, homePath } = useAuth()
+  const { login, register } = useAuth()
   const { addToast } = useToast()
   const navigate = useNavigate()
 
@@ -94,14 +94,14 @@ export function BrutalistAuthModal({ isOpen, initialMode = 'login', redirectOnSu
         addToast('Signed in successfully! Welcome back.', 'success')
         onClose?.()
         if (redirectOnSuccess) {
-          navigate(signedIn?.role === 'admin' ? '/ingest' : homePath || '/search', { replace: true })
+          navigate(signedIn?.role === 'admin' ? '/ingest' : '/search', { replace: true })
         }
       } else {
         const created = await register(name, email, password)
         addToast('Account created successfully! Welcome to SceneSearch.', 'success')
         onClose?.()
         if (redirectOnSuccess) {
-          navigate(created?.role === 'admin' ? '/ingest' : homePath || '/search', { replace: true })
+          navigate(created?.role === 'admin' ? '/ingest' : '/search', { replace: true })
         }
       }
     } catch (err) {

@@ -24,3 +24,10 @@ def normalize_vectors(
             raise ValueError("Vector has zero or invalid norm")
         result.append([value / norm for value in values])
     return result
+
+
+def cosine(left: Sequence[float], right: Sequence[float]) -> float:
+    numerator = sum(a * b for a, b in zip(left, right, strict=True))
+    left_norm = math.sqrt(sum(value * value for value in left))
+    right_norm = math.sqrt(sum(value * value for value in right))
+    return numerator / (left_norm * right_norm) if left_norm and right_norm else 0.0

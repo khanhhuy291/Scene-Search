@@ -71,6 +71,11 @@ async def _run(args: argparse.Namespace) -> int:
     from search.catalog import get_catalog
     from search.engine import SceneSearchEngine
 
+    if args.collection:
+        from core.config import get_settings
+
+        get_settings().qdrant.chunk_collection = args.collection
+
     if args.host or args.port:
         import os
 
@@ -82,10 +87,10 @@ async def _run(args: argparse.Namespace) -> int:
             api_key=os.getenv("QDRANT_API_KEY"),
             timeout=60,
         )
-        engine = SceneSearchEngine(client=client, collection=args.collection)
+        engine = SceneSearchEngine(client=client)
     else:
         client = None
-        engine = SceneSearchEngine(collection=args.collection)
+        engine = SceneSearchEngine()
 
     catalog = get_catalog()
     await catalog.ensure_loaded(engine._qdrant())  # noqa: SLF001 - the harness is inside the seam

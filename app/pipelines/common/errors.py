@@ -15,6 +15,12 @@ class RetryablePipelineError(PipelineError):
     """A transient infrastructure failure that Celery may safely retry."""
 
 
+class IngestionBusyError(RetryablePipelineError):
+    """Another delivery is already executing this video's ingestion."""
+
+    code = "ingestion_busy"
+
+
 class PermanentPipelineError(PipelineError):
     """Invalid input or configuration that retrying cannot repair."""
 
@@ -58,6 +64,7 @@ class RetryablePersistenceError(RetryablePipelineError):
 __all__ = [
     "EmbeddingError",
     "IngestionCancelledError",
+    "IngestionBusyError",
     "PermanentPipelineError",
     "PersistenceError",
     "PipelineError",

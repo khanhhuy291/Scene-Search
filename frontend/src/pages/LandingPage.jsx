@@ -2071,7 +2071,7 @@ export function LandingPage() {
           </div>
 
           <div className="text-xs text-stone-500 text-right space-y-1">
-            <p className="font-bold text-black dark:text-white">v2.4.0-PRODUCTION</p>
+            <p className="font-bold text-black dark:text-white">PRODUCTION</p>
             <p>© {new Date().getFullYear()} SCENESEARCH AI LABS.</p>
           </div>
         </div>

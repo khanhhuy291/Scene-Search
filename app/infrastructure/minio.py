@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import timedelta
 from pathlib import Path
 
@@ -101,6 +102,28 @@ class MinIOStorage:
             return target.resolve()
         except (MinioException, OSError) as exc:
             raise MinIOError(f"Unable to download object {object_name!r} to {target}") from exc
+
+    def object_checksum(self, object_name: str, *, max_bytes: int) -> str:
+        """Hash the object incrementally while enforcing the upload size limit."""
+        response = None
+        try:
+            response = self.client.get_object(self.bucket, object_name)
+            digest = hashlib.sha256()
+            size = 0
+            while chunk := response.read(1024 * 1024):
+                size += len(chunk)
+                if size > max_bytes:
+                    raise ValueError("Upload exceeds 500 MB")
+                digest.update(chunk)
+            if size == 0:
+                raise ValueError("Uploaded file is empty")
+            return digest.hexdigest()
+        except (MinioException, OSError) as exc:
+            raise MinIOError(f"Unable to inspect uploaded object {object_name!r}") from exc
+        finally:
+            if response is not None:
+                response.close()
+                response.release_conn()
 
     def read_object(self, object_name: str) -> bytes:
         """Read one object into memory and always release the MinIO response."""

@@ -35,7 +35,6 @@ class IngestionTask(Base):
         ForeignKey("videos.id", ondelete="SET NULL"), nullable=True
     )
     celery_task_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    pipeline_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

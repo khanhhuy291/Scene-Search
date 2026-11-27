@@ -51,7 +51,7 @@ export const DashboardOverview = ({ telemetry, onRefresh, loading }) => {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 bg-[#FF5500] text-black text-[10px] font-black uppercase border border-black shadow-[1px_1px_0px_0px_#000]">
-              TELEMETRY V2
+              TELEMETRY
             </span>
             <span className="text-xs text-stone-500 font-bold">
               {telemetry?.generated_at ? `SYNC: ${new Date(telemetry.generated_at).toLocaleTimeString()}` : ''}

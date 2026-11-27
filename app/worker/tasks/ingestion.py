@@ -9,11 +9,11 @@ from uuid import UUID
 from celery import Task
 from loguru import logger
 
-from core.ingestion import PIPELINE_VERSION
 from infrastructure.postgres import close_postgres
 from infrastructure.qdrant import close_qdrant
 from infrastructure.redis import close_redis
 from pipelines.common.errors import (
+    IngestionBusyError,
     IngestionCancelledError,
     RetryablePipelineError,
 )
@@ -57,7 +57,6 @@ async def _run_ingestion(
             job_id=task_id,
             video_id=video_id,
             progress=progress,
-            pipeline_version=PIPELINE_VERSION,
         )
         await update_task_status(
             task_id,
@@ -67,6 +66,9 @@ async def _run_ingestion(
         )
         logger.info("Completed video ingestion task {task_id}", task_id=task_id)
         return result
+    except IngestionBusyError:
+        # A duplicate delivery must not overwrite the executing owner's task state.
+        raise
     except Exception as exc:
         logger.exception("Video ingestion task {task_id} failed", task_id=task_id)
         retryable = isinstance(exc, (RetryablePipelineError, ConnectionError, TaskStatusStoreError))
@@ -76,7 +78,7 @@ async def _run_ingestion(
         failure_status = TaskStatus.RETRYING if retryable and not exhausted else TaskStatus.FAILED
         if failure_status is TaskStatus.FAILED:
             try:
-                await corpus.mark_video_ingestion_failed(UUID(video_id))
+                await corpus.mark_video_ingestion_failed(UUID(video_id), run_id=task_id)
             except Exception:
                 logger.exception("Could not mark video {video_id} as failed", video_id=video_id)
         try:

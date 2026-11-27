@@ -1,32 +1,34 @@
-"""Refresh fallback scene captions from stored derived thumbnails."""
+"""Refresh incomplete published chunks from stored timestamped frame sequences."""
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import io
-import re
+import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from loguru import logger
 from PIL import Image
-from qdrant_client import AsyncQdrantClient
+from qdrant_client import AsyncQdrantClient, models
 
 from core.config import get_settings
 from core.privacy import is_anonymized_thumbnail
 from infrastructure.minio import get_derived_storage
 from infrastructure.qdrant import get_qdrant_client
+from ml.encoder import get_qwen_encoder
+from ml.vectors import normalize_vectors
 from pipelines.common.types import FrameRecord, SceneRecord
 from pipelines.ingestion.metadata_extractor import extract_scene_vlm_metadata
 from pipelines.ingestion.scene_metadata import (
-    aggregate_observations,
-    canonical_concepts,
     metadata_payload,
 )
+from repositories.scene_graph import active_publications, lock_active_publication
 from schemas.scene_evidence import SceneEvidence
+from search.publication import published_chunks
 from services.catalog_generation import invalidate_catalog
 
-_FALLBACK_CAPTION = re.compile(r"^Dashcam driving scene at\s+\d+(?:\.\d+)?s\.$")
-_PAGE_SIZE = 500
 _BATCH_SIZE = 8
 
 ProgressCallback = Callable[[int], Awaitable[None]]
@@ -40,14 +42,8 @@ def _caption(payload: dict[str, Any]) -> str:
 
 def _is_fallback(payload: dict[str, Any]) -> bool:
     metadata = payload.get("metadata") or {}
-    if metadata.get("schema_version") == 2:
-        evidence = SceneEvidence.model_validate(metadata)
-        return any(
-            o.frame_index == evidence.representative_frame_index and o.status != "success"
-            for o in evidence.observations
-        )
-    caption = _caption(payload)
-    return not caption or bool(_FALLBACK_CAPTION.fullmatch(caption))
+    evidence = SceneEvidence.model_validate(metadata)
+    return any(o.status != "success" for o in evidence.observations) or not _caption(payload)
 
 
 def _image_from_storage(object_key: str) -> Image.Image:
@@ -60,124 +56,116 @@ async def _collect_candidates(
     client: AsyncQdrantClient,
     video_ids: set[str] | None,
 ) -> list[tuple[str | int, dict[str, Any]]]:
-    settings = get_settings().qdrant
-    candidates: list[tuple[str | int, dict[str, Any]]] = []
-    offset: Any = None
-    while True:
-        points, offset = await client.scroll(
-            collection_name=settings.collection,
-            limit=_PAGE_SIZE,
-            offset=offset,
+    publications = await active_publications(video_ids)
+    points = await published_chunks(client, publications)
+    return [(point.id, point.payload) for point in points.values() if _is_fallback(point.payload)]
+
+
+async def _make_sequence(
+    client: AsyncQdrantClient, point_id: str | int, payload: dict[str, Any]
+) -> SceneRecord:
+    evidence = SceneEvidence.model_validate(payload["metadata"])
+    records = await client.retrieve(
+        collection_name=get_settings().qdrant.keyframe_collection,
+        ids=payload.get("vlm_frame_ids") or payload["keyframe_ids"],
+        with_payload=True,
+        with_vectors=False,
+    )
+    by_reference = {
+        (point.payload["frame_id"], point.payload["timestamp_ms"]): point.payload
+        for point in records
+    }
+    if evidence.candidate_count > get_settings().video.vlm_max_frames:
+        raise ValueError(
+            "Stored sequence exceeds the configured VLM frame budget; re-ingest with the selected budget"
+        )
+    frames = []
+    try:
+        for observation in evidence.observations:
+            data = by_reference.get((observation.frame_index, observation.timestamp_ms))
+            if (
+                data is None
+                or data.get("ingestion_run_id") != payload["ingestion_run_id"]
+                or data.get("video_id") != payload["video_id"]
+                or str(point_id) not in data.get("chunk_ids", [])
+                or not is_anonymized_thumbnail(data.get("thumbnail_key"))
+            ):
+                raise ValueError("Stored VLM sequence is incomplete; re-ingest this video")
+            image = await asyncio.to_thread(_image_from_storage, data["thumbnail_key"])
+            frames.append(
+                FrameRecord(
+                    observation.timestamp_ms,
+                    observation.frame_index,
+                    image,
+                    display_image=image,
+                    privacy_status="verified",
+                )
+            )
+        frames.sort(key=lambda frame: (frame.timestamp_ms, frame.frame_index))
+        representative = next(
+            frame for frame in frames if frame.frame_index == evidence.representative_frame_index
+        )
+        return SceneRecord(
+            str(point_id),
+            payload["video_id"],
+            payload["start_ms"],
+            payload["end_ms"],
+            frames,
+            representative_frame=representative,
+            vlm_candidates=frames,
+            metadata={"sampled_frame_count": evidence.sampled_count},
+        )
+    except BaseException:
+        for frame in frames:
+            frame.close()
+        raise
+
+
+async def _write_sequence(
+    client: AsyncQdrantClient, point_id: str | int, original: dict[str, Any], fresh: dict[str, Any]
+) -> None:
+    encoder = get_qwen_encoder()
+    caption = fresh["metadata"]["caption"]
+    vector = normalize_vectors(
+        await asyncio.to_thread(encoder.encode_texts, [caption]),
+        dimension=encoder.dimension,
+        count=1,
+    )[0]
+    updates = metadata_payload(fresh)
+    revision = hashlib.sha256(
+        json.dumps({"metadata": fresh, "model": encoder.model_version}, sort_keys=True).encode()
+    ).hexdigest()
+    updates.update(
+        caption_embedding_status="ready",
+        caption_embedding_version=encoder.model_version,
+        enrichment_fingerprint=revision,
+    )
+    async with lock_active_publication(original["video_id"], original["ingestion_run_id"]):
+        records = await client.retrieve(
+            collection_name=get_settings().qdrant.chunk_collection,
+            ids=[point_id],
             with_payload=True,
-            with_vectors=False,
+            with_vectors=True,
         )
-        for point in points:
-            payload = point.payload or {}
-            if video_ids is not None and str(payload.get("video_id") or "") not in video_ids:
-                continue
-            if _is_fallback(payload):
-                candidates.append((point.id, payload))
-        if offset is None:
-            break
-    return candidates
-
-
-def _make_scene(point_id: str | int, payload: dict[str, Any]) -> SceneRecord:
-    thumbnail_key = (
-        payload.get("thumbnail_key")
-        or payload.get("minio_path")
-        or payload.get("minio_thumbnail_key")
-        or payload.get("frame_minio_key")
-    )
-    if not is_anonymized_thumbnail(thumbnail_key):
-        raise ValueError(f"Qdrant point {point_id} has no anonymized thumbnail")
-
-    video_id = str(payload.get("video_id") or "")
-    if not video_id:
-        raise ValueError(f"Qdrant point {point_id} has no video_id")
-
-    start_ms = int(payload.get("start_ms") or round(float(payload.get("ts_start_s") or 0) * 1000))
-    end_ms = int(payload.get("end_ms") or round(float(payload.get("ts_end_s") or 0) * 1000))
-    frame_index = int(
-        payload["representative_frame_index"]
-        if payload.get("representative_frame_index") is not None
-        else payload.get("frame_id") or 0
-    )
-    frame_timestamp = (
-        int(payload["representative_timestamp_ms"])
-        if payload.get("representative_timestamp_ms") is not None
-        else start_ms
-    )
-    image = _image_from_storage(thumbnail_key)
-    frame = FrameRecord(
-        timestamp_ms=frame_timestamp,
-        frame_index=frame_index,
-        image=image,
-        display_image=image,
-        privacy_status="verified",
-    )
-    return SceneRecord(
-        scene_id=str(payload.get("scene_id") or payload.get("segment_id") or point_id),
-        video_id=video_id,
-        start_ms=start_ms,
-        end_ms=max(start_ms, end_ms),
-        keyframes=[frame],
-        thumbnail_key=thumbnail_key,
-        representative_frame=frame,
-        vlm_candidates=[frame],
-    )
-
-
-def refresh_payload(original: dict[str, Any], fresh: dict[str, Any]) -> dict[str, Any]:
-    """Merge only the thumbnail observation; preserve evidence for other frames."""
-    fresh_evidence = SceneEvidence.model_validate(fresh["metadata"])
-    metadata = original.get("metadata") or {}
-    if metadata.get("schema_version") == 2:
-        old = SceneEvidence.model_validate(metadata)
-        refreshed = fresh_evidence.observations[0]
         if (
-            refreshed.frame_index != old.representative_frame_index
-            or refreshed.timestamp_ms != old.representative_timestamp_ms
+            not records
+            or records[0].payload.get("metadata") != original.get("metadata")
+            or records[0].payload.get("ingestion_run_id") != original["ingestion_run_id"]
         ):
-            raise ValueError("Refreshed thumbnail does not match the representative reference")
-        previous = next(o for o in old.observations if o.frame_index == refreshed.frame_index)
-        # Stored detections/behaviors are not recomputed by thumbnail-only VLM.
-        refreshed = refreshed.model_copy(
-            update={
-                "objects": previous.objects,
-                "object_counts": previous.object_counts,
-                "behaviors": previous.behaviors,
-                "present_concepts": sorted(
-                    set(refreshed.present_concepts) | canonical_concepts(previous.objects)
-                ),
-                "absent_concepts": sorted(
-                    set(refreshed.absent_concepts) - canonical_concepts(previous.objects)
-                ),
-            }
+            raise ValueError("Chunk changed during caption refresh")
+        point = records[0]
+        # A point upsert publishes caption, evidence and its vector together.
+        await client.upsert(
+            collection_name=get_settings().qdrant.chunk_collection,
+            points=[
+                models.PointStruct(
+                    id=point.id,
+                    payload={**point.payload, **updates},
+                    vector={**point.vector, "caption": vector},
+                )
+            ],
+            wait=True,
         )
-        fresh = aggregate_observations(
-            [refreshed if o.frame_index == refreshed.frame_index else o for o in old.observations],
-            sampled_count=old.sampled_count,
-            representative_frame_index=old.representative_frame_index,
-            representative_timestamp_ms=old.representative_timestamp_ms,
-        )
-    else:
-        # A legacy segment's counts/behaviors may span the whole scene. Keep
-        # v1 rather than inventing per-thumbnail evidence for those fields.
-        observation = fresh_evidence.observations[0]
-        metadata = {**metadata, **observation.attributes, "caption": observation.caption}
-        detected = canonical_concepts(
-            list(original.get("objects") or []) + list(original.get("object_counts") or {})
-        )
-        positive = set(observation.present_concepts) | detected
-        fresh = {
-            "metadata": metadata,
-            "enrichment": fresh.get("enrichment"),
-            "present_concepts": sorted(positive),
-            "absent_concepts": sorted(set(observation.absent_concepts) - positive),
-        }
-    fresh["metadata"]["refresh_scope"] = "thumbnail_only"
-    return metadata_payload(fresh)
 
 
 async def refresh_fallback_captions(
@@ -185,7 +173,7 @@ async def refresh_fallback_captions(
     video_ids: set[str] | None = None,
     progress: ProgressCallback | None = None,
 ) -> dict[str, Any]:
-    """Refresh only missing/template captions; leave descriptive VLM payloads intact."""
+    """Refresh incomplete published chunks from their original timestamped VLM sequence."""
 
     settings = get_settings()
     if not settings.llm.api_key or not settings.llm.api_key.get_secret_value():
@@ -205,7 +193,7 @@ async def refresh_fallback_captions(
         point_ids: list[str | int] = []
         for point_id, payload in batch:
             try:
-                scenes.append(_make_scene(point_id, payload))
+                scenes.append(await _make_sequence(qdrant, point_id, payload))
                 point_ids.append(point_id)
             except Exception as exc:
                 failed += 1
@@ -226,14 +214,8 @@ async def refresh_fallback_captions(
                     try:
                         fresh = scene.metadata["vlm_data"]
                         if fresh["enrichment"]["status"] != "success":
-                            raise ValueError("Thumbnail enrichment did not succeed")
-                        payload = refresh_payload(dict(batch)[point_id], fresh)
-                        await qdrant.set_payload(
-                            collection_name=settings.qdrant.collection,
-                            payload=payload,
-                            points=[point_id],
-                            wait=True,
-                        )
+                            raise ValueError("Sequence enrichment did not succeed")
+                        await _write_sequence(qdrant, point_id, dict(batch)[point_id], fresh)
                         updated += 1
                     except Exception as exc:
                         failed += 1
@@ -243,7 +225,8 @@ async def refresh_fallback_captions(
                         )
         finally:
             for scene in scenes:
-                scene.keyframes[0].close()
+                for frame in scene.keyframes:
+                    frame.close()
             if updated > updated_before_batch:
                 await invalidate_catalog()
 

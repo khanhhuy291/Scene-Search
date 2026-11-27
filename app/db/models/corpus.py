@@ -62,6 +62,10 @@ class Video(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     ingestion_status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default="pending"
     )
+    ingestion_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ingestion_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    active_ingestion_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ingestion_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     frames: Mapped[list[Frame]] = relationship(
         back_populates="video", cascade="all, delete-orphan", passive_deletes=True
@@ -162,7 +166,10 @@ class Segment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     privacy_status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default="pending"
     )
-    pipeline_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    semantic_scene_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("semantic_scenes.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    ingestion_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     video: Mapped[Video] = relationship(back_populates="segments")
 
@@ -173,6 +180,63 @@ class Segment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("segment_index >= 0", name="segment_index_non_negative"),
         CheckConstraint("frame_count >= 0", name="frame_count_non_negative"),
     )
+
+
+class SemanticScene(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "semantic_scenes"
+
+    video_id: Mapped[UUID] = mapped_column(
+        ForeignKey("videos.id", ondelete="CASCADE"), nullable=False
+    )
+    scene_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    ts_start_s: Mapped[float] = mapped_column(Float, nullable=False)
+    ts_end_s: Mapped[float] = mapped_column(Float, nullable=False)
+    boundary_reason: Mapped[str] = mapped_column(String(32), nullable=False)
+    boundary_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ingestion_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("video_id", "scene_index", name="uq_semantic_scenes_video_index"),
+        CheckConstraint("ts_end_s > ts_start_s AND ts_start_s >= 0", name="timestamps_ordered"),
+        CheckConstraint("scene_index >= 0", name="scene_index_non_negative"),
+        Index("ix_semantic_scenes_video_id_ts_start_s", "video_id", "ts_start_s"),
+    )
+
+
+class SceneKeyframe(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "scene_keyframes"
+
+    video_id: Mapped[UUID] = mapped_column(
+        ForeignKey("videos.id", ondelete="CASCADE"), nullable=False
+    )
+    semantic_scene_id: Mapped[UUID] = mapped_column(
+        ForeignKey("semantic_scenes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    frame_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    timestamp_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    thumbnail_object_key: Mapped[str] = mapped_column(Text, nullable=False)
+    privacy_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    ingestion_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("video_id", "frame_index", name="uq_scene_keyframes_video_frame"),
+        CheckConstraint(
+            "timestamp_ms >= 0 AND frame_index >= 0", name="frame_reference_non_negative"
+        ),
+        CheckConstraint("privacy_status = 'verified'", name="privacy_verified"),
+    )
+
+
+class SceneChunkKeyframe(Base):
+    __tablename__ = "scene_chunk_keyframes"
+
+    segment_id: Mapped[UUID] = mapped_column(
+        ForeignKey("segments.id", ondelete="CASCADE"), primary_key=True
+    )
+    keyframe_id: Mapped[UUID] = mapped_column(
+        ForeignKey("scene_keyframes.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    is_representative: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class FrameObject(UUIDPrimaryKeyMixin, Base):
@@ -259,6 +323,9 @@ __all__ = [
     "Frame",
     "FrameAttribute",
     "FrameObject",
+    "SceneChunkKeyframe",
+    "SceneKeyframe",
     "Segment",
+    "SemanticScene",
     "Video",
 ]

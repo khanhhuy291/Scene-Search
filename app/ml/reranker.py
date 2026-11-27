@@ -1,8 +1,4 @@
-"""Cross-encoder reranking module using Qwen3-VL-Reranker-2B or text cross-encoders.
-
-Performs fine-grained cross-attention relevance scoring over candidate keyframes
-retrieved in the first stage (ANN / hybrid retrieval).
-"""
+"""Cross-encoder reranking of candidate captions and structured metadata."""
 
 from __future__ import annotations
 
@@ -23,14 +19,14 @@ class RerankerError(RuntimeError):
 
 
 class QwenVLReranker:
-    """Multimodal / text CrossEncoder wrapper for stage-2 candidate reranking."""
+    """Text CrossEncoder wrapper for stage-2 candidate reranking."""
 
     def __init__(
         self,
         model_name: str | None = None,
         device: str | None = None,
     ) -> None:
-        self.model_name = model_name or "Qwen/Qwen3-VL-Reranker-2B"
+        self.model_name = model_name
         self._preferred_device = device
         self._model: Any = None
         self._device: str = ""
@@ -109,74 +105,22 @@ class QwenVLReranker:
         candidates: Sequence[Any],
         *,
         top_k: int | None = None,
-        mode: str | None = None,
     ) -> list[Any]:
-        """Rerank candidate matches against query using text metadata or visual image tokens."""
+        """Rerank a bounded candidate pool using captions and text metadata."""
         if not candidates:
             return []
 
         try:
             self.load()
             assert self._model is not None
-        except Exception as exc:
-            logger.warning("Reranker unavailable, keeping original ranking: {}", exc)
-            return list(candidates[:top_k] if top_k else candidates)
-
-        try:
             settings = get_settings().search
-            limit = min(len(candidates), top_k) if top_k else len(candidates)
-            pool_size = max(limit, settings.rerank_top_k)
+            pool_size = min(len(candidates), settings.rerank_top_k)
+            limit = min(pool_size, top_k) if top_k is not None else pool_size
+            if limit <= 0:
+                return []
             to_score = list(candidates[:pool_size])
             documents = [self._build_doc_text(c.keyframe) for c in to_score]
-
-            target_mode = mode or getattr(settings, "rerank_mode", "text")
-
-            # 1. Visual Multimodal Reranking (uses Redis Image Cache)
-            if target_mode == "visual":
-                try:
-                    import asyncio
-
-                    from ml.image_cache import get_image_cache
-
-                    items_to_fetch = [
-                        (
-                            getattr(c.keyframe, "video_id", ""),
-                            getattr(c.keyframe, "frame_name", "")
-                            or getattr(c.keyframe, "name", ""),
-                        )
-                        for c in to_score
-                    ]
-                    # Fetch batch images from Redis (sync wrapper if running synchronously)
-                    cache = get_image_cache()
-                    try:
-                        asyncio.get_running_loop()
-                        # If inside active event loop
-                        import concurrent.futures
-
-                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                            future = executor.submit(
-                                asyncio.run, cache.get_images_batch(items_to_fetch)
-                            )
-                            images = future.result()
-                    except RuntimeError:
-                        images = asyncio.run(cache.get_images_batch(items_to_fetch))
-
-                    pairs = [
-                        (query, img if img is not None else doc)
-                        for img, doc in zip(images, documents)
-                    ]
-                    scores = self._model.predict(pairs)
-                    rankings = [
-                        {"corpus_id": idx, "score": float(sc)} for idx, sc in enumerate(scores)
-                    ]
-                    rankings.sort(key=lambda x: x["score"], reverse=True)
-                    rankings = rankings[:limit]
-                except Exception as exc:
-                    logger.warning("Visual reranking fallback to text: {}", exc)
-                    rankings = self._model.rank(query, documents, top_k=limit)
-            else:
-                # 2. Text Metadata Reranking (Default fast mode)
-                rankings = self._model.rank(query, documents, top_k=limit)
+            rankings = self._model.rank(query, documents, top_k=limit)
 
             reranked = []
             for rank_item in rankings:
@@ -198,8 +142,7 @@ class QwenVLReranker:
 
             return reranked
         except Exception as exc:
-            logger.warning("Reranking execution failed, keeping original order: {}", exc)
-            return list(candidates[:top_k] if top_k else candidates)
+            raise RerankerError("Unable to rerank search candidates") from exc
 
 
 _reranker: QwenVLReranker | None = None

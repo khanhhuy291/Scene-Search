@@ -14,8 +14,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from pydantic import BaseModel
 
 from api.deps import require_admin
-from core.ingestion import PIPELINE_VERSION
-from infrastructure.minio import get_derived_storage, get_raw_storage
+from infrastructure.minio import MinIOError, get_derived_storage, get_raw_storage
+from pipelines.ingestion.vector_index import delete_scene_vectors
 from repositories import corpus
 from repositories.task_status import (
     create_task_status,
@@ -32,7 +32,6 @@ from worker.tasks.ingestion import process_video_ingestion
 router = APIRouter(tags=["ingestion"], dependencies=[Depends(require_admin)])
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 _ALLOWED_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm"}
-_PIPELINE_VERSION = PIPELINE_VERSION
 
 _CELERY_STATE_MAP = {
     "PENDING": TaskStatus.PENDING,
@@ -115,14 +114,26 @@ async def process_direct_uploaded_video(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid video_id UUID")
 
-    # Upsert video record in database
+    suffix = Path(payload.filename).suffix.lower()
+    if suffix not in _ALLOWED_SUFFIXES:
+        raise HTTPException(status_code=415, detail="Unsupported video format")
+    try:
+        checksum = await asyncio.to_thread(
+            get_raw_storage().object_checksum, payload.raw_key, max_bytes=_MAX_UPLOAD_BYTES
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=413 if "exceeds" in str(exc) else 400, detail=str(exc)
+        ) from exc
+    except MinIOError as exc:
+        raise HTTPException(status_code=503, detail="Unable to inspect uploaded video") from exc
+
     video_id, _ = await corpus.upsert_video(
-        checksum=payload.raw_key,
+        checksum=checksum,
         source_uri=f"upload://{payload.filename}",
         dataset="uploads",
         external_id=payload.filename,
     )
-    await corpus.set_video_assets(video_id, raw_object_key=payload.raw_key)
 
     if await corpus.is_video_indexed(video_id):
         task_id = str(uuid4())
@@ -131,7 +142,6 @@ async def process_direct_uploaded_video(
             payload.filename,
             video_id=str(video_id),
             celery_task_id=task_id,
-            pipeline_version=_PIPELINE_VERSION,
         )
         await update_task_status(
             task_id,
@@ -141,21 +151,21 @@ async def process_direct_uploaded_video(
         )
         return record
 
-    claimed = await corpus.claim_video_ingestion(video_id, allow_retry=True)
+    task_id = str(uuid4())
+    claimed = await corpus.claim_video_ingestion(video_id, run_id=task_id)
     if not claimed:
         raise HTTPException(status_code=409, detail="This video is already being processed")
 
-    task_id = str(uuid4())
     try:
+        await corpus.set_video_assets(video_id, raw_object_key=payload.raw_key)
         record = await create_task_status(
             task_id,
             payload.filename,
             video_id=str(video_id),
             celery_task_id=task_id,
-            pipeline_version=_PIPELINE_VERSION,
         )
     except Exception:
-        await corpus.mark_video_ingestion_failed(video_id)
+        await corpus.mark_video_ingestion_failed(video_id, run_id=task_id)
         raise
 
     try:
@@ -165,7 +175,7 @@ async def process_direct_uploaded_video(
             task_id=task_id,
         )
     except Exception as exc:
-        await corpus.mark_video_ingestion_failed(video_id)
+        await corpus.mark_video_ingestion_failed(video_id, run_id=task_id)
         await update_task_status(
             task_id,
             TaskStatus.FAILED,
@@ -239,7 +249,6 @@ async def upload_and_create_ingestion_task(
                     filename,
                     video_id=str(video_id),
                     celery_task_id=task_id,
-                    pipeline_version=_PIPELINE_VERSION,
                 )
                 await update_task_status(
                     task_id,
@@ -263,22 +272,21 @@ async def upload_and_create_ingestion_task(
                     status_code=503, detail="Unable to store uploaded video in storage"
                 ) from exc
 
-        claimed = await corpus.claim_video_ingestion(video_id, allow_retry=True)
+        task_id = str(uuid4())
+        claimed = await corpus.claim_video_ingestion(video_id, run_id=task_id)
         if not claimed:
             raise HTTPException(status_code=409, detail="This video is already being processed")
 
-    task_id = str(uuid4())
     try:
         record = await create_task_status(
             task_id,
             filename,
             video_id=str(video_id),
             celery_task_id=task_id,
-            pipeline_version=_PIPELINE_VERSION,
         )
     except Exception:
         if claimed:
-            await corpus.mark_video_ingestion_failed(video_id)
+            await corpus.mark_video_ingestion_failed(video_id, run_id=task_id)
         raise
     try:
         await asyncio.to_thread(
@@ -287,7 +295,7 @@ async def upload_and_create_ingestion_task(
             task_id=task_id,
         )
     except Exception as exc:
-        await corpus.mark_video_ingestion_failed(video_id)
+        await corpus.mark_video_ingestion_failed(video_id, run_id=task_id)
         await update_task_status(
             task_id,
             TaskStatus.FAILED,
@@ -323,7 +331,6 @@ async def reprocess_existing_video(
             video.external_id or f"video_{video_id}",
             video_id=str(video_id),
             celery_task_id=task_id,
-            pipeline_version=_PIPELINE_VERSION,
         )
         await update_task_status(
             task_id,
@@ -333,21 +340,20 @@ async def reprocess_existing_video(
         )
         return record
 
-    claimed = await corpus.claim_video_ingestion(video_id, allow_retry=False, allow_indexed=force)
+    task_id = str(uuid4())
+    claimed = await corpus.claim_video_ingestion(video_id, run_id=task_id, allow_indexed=force)
     if not claimed:
         raise HTTPException(status_code=409, detail="This video is already being processed")
 
-    task_id = str(uuid4())
     try:
         record = await create_task_status(
             task_id,
             video.external_id or f"video_{video_id}",
             video_id=str(video_id),
             celery_task_id=task_id,
-            pipeline_version=_PIPELINE_VERSION,
         )
     except Exception:
-        await corpus.mark_video_ingestion_failed(video_id)
+        await corpus.mark_video_ingestion_failed(video_id, run_id=task_id)
         raise
 
     try:
@@ -357,7 +363,7 @@ async def reprocess_existing_video(
             task_id=task_id,
         )
     except Exception as exc:
-        await corpus.mark_video_ingestion_failed(video_id)
+        await corpus.mark_video_ingestion_failed(video_id, run_id=task_id)
         await update_task_status(
             task_id,
             TaskStatus.FAILED,
@@ -396,7 +402,9 @@ async def delete_video(video_id: UUID) -> None:
                 celery_task_id,
                 terminate=False,
             )
-        await delete_by_video(str(video_id))
+        await delete_scene_vectors(str(video_id))
+        if plan.ingestion_fingerprint is None:
+            await delete_by_video(str(video_id))
         if plan.raw_object_key:
             await asyncio.to_thread(get_raw_storage().delete_object, plan.raw_object_key)
         await asyncio.to_thread(get_raw_storage().delete_prefix, f"raw/{video_id}/")

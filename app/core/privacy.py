@@ -6,7 +6,7 @@ from typing import TypeGuard
 THUMBNAIL_VERSION = "yolo-v1"
 PLAYBACK_VERSION = "yolo-v1"
 _THUMBNAIL_KEY = re.compile(
-    rf"videos/[a-zA-Z0-9_-]+/segments/[a-zA-Z0-9_-]+/thumbnail-{THUMBNAIL_VERSION}/"
+    rf"videos/[a-zA-Z0-9_-]+/(?:segments|keyframes)/[a-zA-Z0-9_-]+/thumbnail-{THUMBNAIL_VERSION}/"
     r"[a-zA-Z0-9_-]+\.jpg"
 )
 

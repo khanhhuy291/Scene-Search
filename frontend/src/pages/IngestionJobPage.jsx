@@ -322,7 +322,6 @@ export const IngestionJobPage = () => {
             <dl className="space-y-3 text-xs">
               {[
                 ['VIDEO ID', job.video_id],
-                ['PIPELINE V', job.pipeline_version],
                 ['CREATED', formatDate(job.created_at)],
                 ['STARTED', formatDate(job.started_at)],
                 ['FINISHED', formatDate(job.finished_at)],

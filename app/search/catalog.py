@@ -1,29 +1,4 @@
-"""In-process snapshot of every indexed keyframe's payload.
-
-This exists to make one promise keepable: when an engineer asks for "a snowy
-day" because they intend to *train* on it, they need every snowy video in the
-corpus, not the twelve nearest neighbours. Completeness cannot come from an
-approximate nearest-neighbour search -- that is what "approximate" means -- so it
-comes from evaluating the query against every caption.
-
-Doing that per request against Qdrant would mean paging the whole collection on
-every keystroke, so the payloads are read once and held. Three facts make this a
-reasonable trade rather than a lazy one:
-
-* The collection is small and bounded: ~22k keyframes over ~880 videos, roughly
-  20 MB of caption text.
-* The snapshot is normally stable between writes. Ingestion and the admin caption
-  refresh task increment a shared Redis generation so a changed caption causes a
-  reload on the next search; the TTL remains a fallback for other writers.
-* The alternative needs a full-text payload index on the collection, and the
-  collection is owned by another workstream. Adding indexes to someone else's
-  live index to satisfy a read path is not a change to make unilaterally.
-
-The negation-aware matching in :mod:`search.query` also cannot be expressed as a
-Qdrant text filter at all -- ``MatchText`` is substring matching with no notion of
-"no visible pedestrians" meaning the opposite of "pedestrians" -- so the scan is
-required regardless of how the candidates are narrowed.
-"""
+"""Shared catalog of published chunks for corpus summaries and evaluation."""
 
 from __future__ import annotations
 
@@ -36,7 +11,6 @@ from typing import Any, TypeAlias
 
 from loguru import logger
 
-from core.config import get_settings
 from schemas.scene_evidence import SceneEvidence
 from search.query import TIME_TO_CONCEPT as _TIME_TO_CONCEPT
 from search.query import WEATHER_TO_CONCEPT as _WEATHER_TO_CONCEPT
@@ -111,15 +85,12 @@ def _infer_timestamp_s(payload: dict[str, Any], frame_no: int) -> float:
             return max(0.0, float(raw))
         except (TypeError, ValueError):
             continue
-    if frame_no >= 0:
-        fps = get_settings().search.keyframe_fps
-        return max(0.0, frame_no / fps)
-    return 0.0
+    raise ValueError("Indexed media requires a source timestamp")
 
 
 @dataclass(frozen=True, slots=True)
 class Keyframe:
-    """One indexed keyframe, as the search path needs it.
+    """One indexed retrieval chunk or keyframe used by the search path.
 
     ``slots`` because there are ~22k of these resident and the attribute
     dictionaries would otherwise be the largest single cost of the snapshot.
@@ -152,6 +123,8 @@ class Keyframe:
     representative_timestamp_s: float | None = None
     representative_frame_index: int | None = None
     evidence: SceneEvidence | None = None
+    semantic_scene_id: str | None = None
+    ingestion_run_id: str | None = None
 
     @property
     def has_thumbnail(self) -> bool:
@@ -261,13 +234,15 @@ def keyframe_from_payload(point_id: str, payload: dict[str, Any]) -> Keyframe | 
     )
 
     return Keyframe(
+        semantic_scene_id=payload.get("semantic_scene_id"),
+        ingestion_run_id=payload.get("ingestion_run_id"),
         representative_timestamp_s=(
             _int_or_none(payload.get("representative_timestamp_ms")) / 1000
             if _int_or_none(payload.get("representative_timestamp_ms")) is not None
             else None
         ),
         representative_frame_index=_int_or_none(payload.get("representative_frame_index")),
-        evidence=SceneEvidence.model_validate(meta) if meta.get("schema_version") == 2 else None,
+        evidence=SceneEvidence.model_validate(meta) if "observations" in meta else None,
         point_id=point_id,
         video_id=str(video_id),
         timestamp_s=max(0.0, timestamp_s),
@@ -474,7 +449,7 @@ class CatalogView:
         return self.per_video.get(video_id, 0)
 
 
-class KeyframeCatalog:
+class ChunkCatalog:
     """A point-in-time snapshot of the collection's payloads."""
 
     def __init__(self, *, ttl_seconds: float = DEFAULT_TTL_SECONDS) -> None:
@@ -661,27 +636,16 @@ class KeyframeCatalog:
             return None
 
     async def _load(self, client: Any) -> None:
-        collection = get_settings().qdrant.collection
-        started = time.monotonic()
+        from repositories.scene_graph import active_publications
+        from search.publication import published_chunks
 
-        frames: list[Keyframe] = []
-        offset: Any = None
-        while True:
-            points, offset = await client.scroll(
-                collection_name=collection,
-                limit=_SCROLL_PAGE,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False,
-            )
-            if not points:
-                break
-            for point in points:
-                keyframe = keyframe_from_payload(str(point.id), point.payload or {})
-                if keyframe is not None:
-                    frames.append(keyframe)
-            if offset is None:
-                break
+        started = time.monotonic()
+        points = await published_chunks(client, await active_publications())
+        frames = [
+            frame
+            for identifier, point in points.items()
+            if (frame := keyframe_from_payload(identifier, point.payload or {})) is not None
+        ]
 
         per_video: dict[str, int] = {}
         ocr_by_value: dict[str, str] = {}
@@ -729,15 +693,15 @@ class KeyframeCatalog:
         )
 
 
-_catalog: KeyframeCatalog | None = None
+_catalog: ChunkCatalog | None = None
 
 
-def get_catalog() -> KeyframeCatalog:
+def get_catalog() -> ChunkCatalog:
     """Return the process-wide catalog, without loading it."""
 
     global _catalog
     if _catalog is None:
-        _catalog = KeyframeCatalog()
+        _catalog = ChunkCatalog()
     return _catalog
 
 
@@ -752,7 +716,7 @@ __all__ = [
     "DEFAULT_TTL_SECONDS",
     "ConceptArrays",
     "Keyframe",
-    "KeyframeCatalog",
+    "ChunkCatalog",
     "get_catalog",
     "keyframe_from_payload",
     "reset_catalog",

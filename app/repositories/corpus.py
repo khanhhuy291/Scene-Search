@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -42,10 +43,11 @@ class SegmentRow:
     id: UUID | None = None
     preview_object_key: str | None = None
     privacy_status: str = "pending"
-    pipeline_version: str | None = None
     representative_frame_index: int | None = None
     representative_timestamp_ms: int | None = None
     thumbnail_object_key: str | None = None
+    semantic_scene_id: UUID | None = None
+    ingestion_fingerprint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +84,7 @@ class BehaviorEventRow:
 class VideoDeletionPlan:
     celery_task_ids: tuple[str, ...]
     raw_object_key: str | None = None
+    ingestion_fingerprint: str | None = None
 
 
 async def upsert_video(
@@ -161,12 +164,12 @@ async def is_video_indexed(video_id: UUID) -> bool:
 
 
 async def claim_video_ingestion(
-    video_id: UUID, *, allow_retry: bool = True, allow_indexed: bool = False
+    video_id: UUID, *, run_id: str, allow_indexed: bool = False
 ) -> bool:
-    """Atomically reserve a pending, failed, deleting, or retried video for one ingestion task."""
-    statuses = (
-        ("pending", "failed", "processing", "deleting") if allow_retry else ("pending", "failed")
-    )
+    """Bind one eligible video to its job before enqueue; never steal a running job."""
+    if not run_id or len(run_id) > 64:
+        raise ValueError("Invalid ingestion run identity")
+    statuses = ("pending", "failed")
     if allow_indexed:
         statuses += ("indexed",)
     factory = get_session_factory()
@@ -177,18 +180,19 @@ async def claim_video_ingestion(
                 Video.id == video_id,
                 Video.ingestion_status.in_(statuses),
             )
-            .values(ingestion_status="processing")
+            .values(ingestion_status="processing", ingestion_run_id=run_id)
         )
         return result.rowcount == 1
 
 
-async def mark_video_ingestion_failed(video_id: UUID) -> None:
+async def mark_video_ingestion_failed(video_id: UUID, *, run_id: str) -> None:
     factory = get_session_factory()
     async with factory() as session, session.begin():
         await session.execute(
             update(Video)
             .where(
                 Video.id == video_id,
+                Video.ingestion_run_id == run_id,
                 Video.ingestion_status.not_in(("indexed", "deleting")),
             )
             .values(ingestion_status="failed")
@@ -213,7 +217,9 @@ async def prepare_video_deletion(video_id: UUID) -> VideoDeletionPlan | None:
             )
         )
         return VideoDeletionPlan(
-            celery_task_ids=tuple(celery_ids), raw_object_key=video.raw_object_key
+            celery_task_ids=tuple(celery_ids),
+            raw_object_key=video.raw_object_key,
+            ingestion_fingerprint=video.ingestion_fingerprint,
         )
 
 
@@ -264,7 +270,6 @@ async def insert_segments(video_id: UUID, segments: Sequence[SegmentRow]) -> lis
                 "frame_count",
                 "preview_object_key",
                 "privacy_status",
-                "pipeline_version",
                 "representative_frame_index",
                 "representative_timestamp_ms",
                 "thumbnail_object_key",
@@ -299,14 +304,18 @@ async def delete_segments(video_id: UUID) -> None:
         await session.execute(delete(Segment).where(Segment.video_id == video_id))
 
 
-async def preflight_segments(video_id: UUID, segments: Sequence[SegmentRow]) -> None:
+async def preflight_segments(
+    video_id: UUID, segments: Sequence[SegmentRow], *, max_duration_s: float = 5.0
+) -> None:
     """Verify the migrated schema and video reservation before replacing any rows."""
+    if not math.isfinite(max_duration_s) or round(max_duration_s * 1000) < 1:
+        raise ValueError("Segment duration limit must be finite and positive")
     for row in segments:
         if row.ts_start_s < 0 or row.ts_end_s <= row.ts_start_s:
             raise ValueError("Scene timestamps are invalid")
         start_ms, end_ms = round(row.ts_start_s * 1000), round(row.ts_end_s * 1000)
-        if end_ms - start_ms > 5000 or row.frame_count < 1:
-            raise ValueError("Scene exceeds five seconds or has no retained frames")
+        if end_ms - start_ms > round(max_duration_s * 1000) or row.frame_count < 1:
+            raise ValueError("Segment exceeds the configured duration or has no retained frames")
         if row.representative_timestamp_ms is not None and not (
             start_ms <= row.representative_timestamp_ms < end_ms
         ):
@@ -351,6 +360,8 @@ async def mark_video_indexed(
     *,
     model_version: str,
     preview_object_key: str | None = None,
+    ingestion_fingerprint: str | None = None,
+    ingestion_run_id: str | None = None,
 ) -> bool:
     now = datetime.now(UTC)
     preview = (
@@ -358,11 +369,21 @@ async def mark_video_indexed(
         if preview_object_key is not None
         else {}
     )
+    if ingestion_fingerprint is not None:
+        preview["ingestion_fingerprint"] = ingestion_fingerprint
     factory = get_session_factory()
     async with factory() as session, session.begin():
         result = await session.execute(
             update(Video)
-            .where(Video.id == video_id, Video.ingestion_status == "processing")
+            .where(
+                Video.id == video_id,
+                Video.ingestion_status == "processing",
+                *(
+                    [Video.ingestion_run_id == ingestion_run_id]
+                    if ingestion_run_id is not None
+                    else []
+                ),
+            )
             .values(
                 model_version=model_version,
                 ingested_at=now,

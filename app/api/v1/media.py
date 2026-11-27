@@ -10,7 +10,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
-from loguru import logger
 from minio.error import MinioException
 
 from api.deps import get_current_user_optional
@@ -19,7 +18,7 @@ from core.privacy import is_anonymized_playback, is_anonymized_thumbnail
 from infrastructure.minio import MinIOError, MinIOStorage, get_derived_storage
 from infrastructure.qdrant import get_qdrant_client
 from repositories import corpus
-from search.catalog import get_catalog
+from search.publication import published_point
 
 router = APIRouter(
     prefix="/media",
@@ -93,24 +92,10 @@ async def _thumbnail_bytes(object_key: str) -> bytes:
 
 @router.get("/thumbnail/{point_id}", summary="Anonymized keyframe thumbnail")
 async def get_thumbnail(point_id: str) -> Response:
-    keyframe = get_catalog().get(point_id)
-    object_key = keyframe.thumbnail_key if keyframe else None
+    point = await published_point(get_qdrant_client(), point_id)
+    object_key = (point.payload or {}).get("thumbnail_key") if point is not None else None
     if not is_anonymized_thumbnail(object_key):
-        client = get_qdrant_client()
-        try:
-            records = await client.retrieve(
-                collection_name=get_settings().qdrant.collection,
-                ids=[point_id],
-                with_payload=True,
-            )
-        except Exception as exc:
-            logger.debug("Thumbnail lookup failed for {point}: {error}", point=point_id, error=exc)
-            records = []
-        object_key = (records[0].payload or {}).get("thumbnail_key") if records else None
-    if not is_anonymized_thumbnail(object_key):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Anonymized thumbnail unavailable"
-        )
+        raise HTTPException(status_code=404, detail="Anonymized thumbnail unavailable")
     return Response(
         content=await _thumbnail_bytes(object_key),
         media_type="image/jpeg",
@@ -162,23 +147,10 @@ def _playback_bytes(storage: MinIOStorage, key: str, offset: int, length: int) -
 
 @router.get("/clip/{point_id}", summary="Anonymized video containing the keyframe")
 async def get_clip(point_id: str, request: Request) -> Response:
-    keyframe = get_catalog().get(point_id)
-    if keyframe is not None:
-        return await get_video_by_id(keyframe.video_id, request)
-
-    try:
-        point_uuid = UUID(point_id)
-        records = await get_qdrant_client().retrieve(
-            collection_name=get_settings().qdrant.collection,
-            ids=[str(point_uuid)],
-            with_payload=True,
-        )
-    except Exception as exc:
-        raise _playback_unavailable() from exc
-    video_id = (records[0].payload or {}).get("video_id") if records else None
-    if not isinstance(video_id, str):
+    point = await published_point(get_qdrant_client(), point_id)
+    if point is None:
         raise _playback_unavailable()
-    return await get_video_by_id(video_id, request)
+    return await get_video_by_id(point.payload["video_id"], request)
 
 
 @router.get("/video/{video_id}", summary="Anonymized full video")
@@ -226,8 +198,8 @@ async def get_video_by_id(video_id: str, request: Request) -> Response:
 
 async def precache_point_thumbnail(point_id: str, thumbnail_key: str | None = None) -> None:
     if thumbnail_key is None:
-        keyframe = get_catalog().get(point_id)
-        thumbnail_key = keyframe.thumbnail_key if keyframe else None
+        point = await published_point(get_qdrant_client(), point_id)
+        thumbnail_key = (point.payload or {}).get("thumbnail_key") if point is not None else None
     if is_anonymized_thumbnail(thumbnail_key):
         await _thumbnail_bytes(thumbnail_key)
 
@@ -251,10 +223,15 @@ async def precache_search_results(results: list[Any]) -> None:
 
 
 async def precache_startup_thumbnails(limit: int = 100) -> None:
-    keyframes = list(get_catalog()._by_id.values())[:limit]
+    from repositories.scene_graph import active_publications
+    from search.publication import published_chunks
+
+    points = await published_chunks(get_qdrant_client(), await active_publications())
     await asyncio.gather(
-        *(precache_point_thumbnail(frame.point_id, frame.thumbnail_key) for frame in keyframes),
-        return_exceptions=True,
+        *(
+            precache_point_thumbnail(identifier, (point.payload or {}).get("thumbnail_key"))
+            for identifier, point in list(points.items())[:limit]
+        )
     )
 
 

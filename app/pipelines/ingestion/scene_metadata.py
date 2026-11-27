@@ -7,6 +7,7 @@ from core.ingestion import METADATA_PROMPT_VERSION
 from pipelines.common.metadata import (
     RoadAttributes,
     SceneAttributes,
+    TemporalObservation,
     TrafficControl,
     unknown_metadata,
 )
@@ -37,12 +38,21 @@ def observation_from_frame(frame: FrameRecord) -> SceneObservation:
     enrichment = data["enrichment"]
     status = enrichment["status"]
     attributes = data["metadata"]
-    counts = dict(Counter(d.class_name for d in frame.detections))
+    detector_counts = dict(Counter(d.class_name for d in frame.detections))
+    counts = dict(detector_counts)
+    objects = set(counts)
     positive = canonical_concepts(list(counts))
     negative: set[str] = set()
+    unknown: set[str] = set()
     if status == "success":
+        objects.update(data.get("objects", []))
+        for name, count in data.get("object_counts", {}).items():
+            if count is not None and name not in counts:
+                counts[name] = count
+        positive |= canonical_concepts(list(objects))
         positive |= canonical_concepts(data.get("present_concepts", []))
         negative = canonical_concepts(data.get("absent_concepts", []))
+        unknown = canonical_concepts(data.get("unknown_concepts", []))
         caption = attributes["caption"]
         clauses = split_clauses(caption)
         for concept in concepts_in_phrase(caption):
@@ -70,29 +80,34 @@ def observation_from_frame(frame: FrameRecord) -> SceneObservation:
         # Time-of-day labels describe one instant. Weather concepts are not
         # grouped here: e.g. rain and fog can legitimately coexist.
         conflicting_time = len(positive & set(TIME_TO_CONCEPT.values())) > 1
-        if positive & negative or conflicting_time:
+        if positive & negative or unknown & (positive | negative) or conflicting_time:
             # Contradictory provider evidence is unusable; detector observations survive.
             data = unknown_metadata(
-                list(counts),
+                list(detector_counts),
                 status="failed",
                 reason="conflicting_evidence",
                 timestamp_ms=frame.timestamp_ms,
             )
             enrichment, attributes, status = data["enrichment"], data["metadata"], "failed"
-            positive, negative = canonical_concepts(list(counts)), set()
+            counts = detector_counts
+            objects = set(counts)
+            positive, negative, unknown = canonical_concepts(list(counts)), set(), set()
     return SceneObservation(
         frame_index=frame.frame_index,
         timestamp_ms=frame.timestamp_ms,
         source=enrichment["source"],
         status=status,
         model=enrichment.get("model"),
-        prompt_version=METADATA_PROMPT_VERSION if status == "success" else None,
+        prompt_version=enrichment.get("prompt_version", METADATA_PROMPT_VERSION)
+        if status == "success"
+        else None,
         reason=enrichment.get("reason"),
         caption=attributes.get("caption", ""),
         attributes=attributes,
         present_concepts=sorted(positive),
         absent_concepts=sorted(negative),
-        objects=sorted(counts),
+        unknown_concepts=sorted(unknown),
+        objects=sorted(objects),
         object_counts=counts,
         behaviors=sorted({b.kind for b in frame.behaviors}),
     )
@@ -119,6 +134,8 @@ def aggregate_observations(
     sampled_count: int | None,
     representative_frame_index: int,
     representative_timestamp_ms: int,
+    sequence_caption: str | None = None,
+    temporal_observations: list[TemporalObservation] | None = None,
 ) -> dict[str, Any]:
     observations = sorted(observations, key=lambda o: (o.timestamp_ms, o.frame_index))
     successful = [o for o in observations if o.status == "success"]
@@ -146,6 +163,7 @@ def aggregate_observations(
         representative_frame_index=representative_frame_index,
         representative_timestamp_ms=representative_timestamp_ms,
         present_concepts=positives,
+        temporal_observations=temporal_observations or [],
     )
     metadata = evidence.model_dump()
     metadata.update(
@@ -153,7 +171,10 @@ def aggregate_observations(
         traffic=traffic,
         traffic_control=traffic_control,
         road=road,
-        caption="; ".join(f"{o.timestamp_ms / 1000:g} s: {o.caption}" for o in successful),
+        caption=sequence_caption
+        if sequence_caption is not None
+        else "; ".join(f"{o.timestamp_ms / 1000:g} s: {o.caption}" for o in successful),
+        caption_source="vlm_sequence" if sequence_caption is not None else "frame_observations",
         retrieval_tags=sorted(
             {tag for o in successful for tag in o.attributes.get("retrieval_tags", [])}
         ),
@@ -205,13 +226,12 @@ def metadata_payload(data: dict[str, Any]) -> dict[str, Any]:
     ):
         value = scene.get(source)
         result[target] = value if value and value != "unknown" else None
-    if metadata.get("schema_version") == 2:
-        observations = metadata["observations"]
-        result["objects"] = sorted({name for o in observations for name in o["objects"]})
-        result["behaviors"] = sorted({name for o in observations for name in o["behaviors"]})
-        counts: dict[str, int] = {}
-        for observation in observations:
-            for name, count in observation["object_counts"].items():
-                counts[name] = max(counts.get(name, 0), count)
-        result["object_counts"] = counts
+    observations = metadata["observations"]
+    result["objects"] = sorted({name for o in observations for name in o["objects"]})
+    result["behaviors"] = sorted({name for o in observations for name in o["behaviors"]})
+    counts: dict[str, int] = {}
+    for observation in observations:
+        for name, count in observation["object_counts"].items():
+            counts[name] = max(counts.get(name, 0), count)
+    result["object_counts"] = counts
     return result

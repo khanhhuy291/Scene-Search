@@ -45,7 +45,6 @@ async def enqueue_caption_refresh(
         task_id,
         task_label,
         celery_task_id=task_id,
-        pipeline_version="caption-refresh-v1",
     )
     try:
         await asyncio.to_thread(

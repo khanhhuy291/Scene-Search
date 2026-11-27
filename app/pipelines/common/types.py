@@ -53,6 +53,25 @@ class FrameRecord:
 
 
 @dataclass
+class SemanticScene:
+    scene_id: str
+    video_id: str
+    start_ms: int
+    end_ms: int
+    frames: tuple[FrameRecord, ...]
+    boundary_reason: str
+    boundary_score: float | None = None
+
+
+@dataclass(frozen=True)
+class SceneBoundary:
+    frame_offset: int
+    score: float
+    raw_score: float | None = None
+    threshold: float | None = None
+
+
+@dataclass
 class SceneRecord:
     scene_id: str
     video_id: str
@@ -77,11 +96,26 @@ class EmbeddingRecord:
     version: str
 
 
+@dataclass
+class IndexedKeyframe:
+    keyframe_id: str
+    video_id: str
+    semantic_scene_id: str
+    frame_index: int
+    timestamp_ms: int
+    embedding: list[float]
+    thumbnail_key: str
+    chunk_ids: list[str] = field(default_factory=list)
+
+
 __all__ = [
+    "IndexedKeyframe",
     "BehaviorRecord",
     "DetectionRecord",
     "EmbeddingRecord",
     "FrameRecord",
     "PrivacyStatus",
     "SceneRecord",
+    "SceneBoundary",
+    "SemanticScene",
 ]

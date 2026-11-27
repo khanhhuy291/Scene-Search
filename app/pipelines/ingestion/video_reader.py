@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -84,13 +85,23 @@ async def acquire_video(ctx: PipelineContext, raw_storage: MinIOStorage) -> Path
     suffix = Path(unique_candidates[0]).suffix or ".mp4"
     destination = ctx.open_temp_dir() / f"input{suffix.lower()}"
 
+    def download(candidate: str) -> None:
+        raw_storage.download_file(candidate, destination)
+        if ctx.source_checksum and len(ctx.source_checksum) == 64:
+            with destination.open("rb") as source:
+                checksum = hashlib.file_digest(source, "sha256").hexdigest()
+            if checksum != ctx.source_checksum:
+                raise VideoAcquireError("Raw video content changed after upload", stage="acquire")
+
     last_exc = None
     for cand in unique_candidates:
         try:
-            await asyncio.to_thread(raw_storage.download_file, cand, destination)
+            await asyncio.to_thread(download, cand)
             if destination.is_file() and destination.stat().st_size > 0:
                 ctx.raw_minio_key = cand
                 return destination
+        except VideoAcquireError:
+            raise
         except Exception as exc:
             last_exc = exc
             continue

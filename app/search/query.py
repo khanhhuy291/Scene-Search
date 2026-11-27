@@ -129,7 +129,7 @@ _CONCEPT_PATTERNS: dict[str, tuple[str, ...]] = {
         r"xe hơi",
         r"xe con",
         r"xe cộ",
-        r"xe",
+        r"xe(?!\s+(?:tải|máy|mô tô|đạp|buýt))",
     ),
     "truck": (r"trucks?", r"lorr(?:y|ies)", r"semi-?trailers?", r"vans?", r"xe tải"),
     "bus": (r"buses", r"busses", r"bus", r"coaches?", r"xe buýt"),
@@ -756,6 +756,8 @@ class CaptionVerdict:
     # Total unnegated mentions of the required concepts. Evidence strength, used
     # for ranking only.
     mentions: int = 0
+    unknown: tuple[str, ...] = ()
+    matching_timestamps_ms: tuple[int, ...] = ()
 
 
 def evaluate_clauses(clauses: tuple[Clause, ...], parsed: ParsedQuery) -> CaptionVerdict:

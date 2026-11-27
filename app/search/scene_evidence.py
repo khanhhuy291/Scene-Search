@@ -43,6 +43,14 @@ def evaluate_scene(
     if positives.intersection(parsed.excluded):
         return None
     required = set(parsed.required)
+    successful = [
+        observation for observation in evidence.observations if observation.status == "success"
+    ]
+    if any(
+        successful and all(concept in observation.absent_concepts for observation in successful)
+        for concept in required
+    ):
+        return None
     # Even non-strict mode cannot combine known positives from different frames.
     needed = required if strict else required & positives
     eligible = [
@@ -54,4 +62,11 @@ def evaluate_scene(
         return None
     best = max(eligible, key=lambda o: len(required.intersection(o.present_concepts)))
     confirmed = tuple(c for c in parsed.required if c in best.present_concepts)
-    return CaptionVerdict(admissible=True, confirmed=confirmed, denied=(), mentions=len(confirmed))
+    return CaptionVerdict(
+        admissible=True,
+        confirmed=confirmed,
+        denied=(),
+        mentions=len(confirmed),
+        unknown=tuple(concept for concept in parsed.required if concept not in confirmed),
+        matching_timestamps_ms=(best.timestamp_ms,) if confirmed else (),
+    )

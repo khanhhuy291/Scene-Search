@@ -88,9 +88,8 @@ def _vector_summaries(vectors: object) -> list[VectorSummary]:
 
 
 async def _corpus_health() -> CorpusHealth:
-    settings = get_settings()
     catalog = get_catalog()
-    caption_vector = settings.search.caption_vector.strip()
+    caption_vector = "caption"
     try:
         await catalog.ensure_loaded(get_qdrant_client())
     except Exception as exc:
@@ -122,10 +121,10 @@ async def _corpus_health() -> CorpusHealth:
 
 async def _qdrant_health() -> QdrantHealth:
     settings = get_settings().qdrant
-    health = QdrantHealth(collection=settings.collection)
+    health = QdrantHealth(collection=settings.chunk_collection)
     try:
         client = get_qdrant_client()
-        info = await client.get_collection(settings.collection)
+        info = await client.get_collection(settings.chunk_collection)
         vectors = getattr(getattr(info.config, "params", None), "vectors", None)
         hnsw = getattr(info.config, "hnsw_config", None)
         health.reachable = True

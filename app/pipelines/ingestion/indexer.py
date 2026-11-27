@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Sequence
-from typing import Any, Protocol
+from typing import Protocol
 
 from core.privacy import is_anonymized_playback
 from pipelines.common.errors import PersistenceError, RetryablePersistenceError
-from pipelines.common.metadata import unknown_metadata
 from pipelines.common.types import EmbeddingRecord, SceneRecord
-from pipelines.ingestion.scene_metadata import metadata_payload
+from pipelines.ingestion.scene_metadata import aggregate_scene_metadata, metadata_payload
+from pipelines.ingestion.vector_index import RepresentationPoints
 from search.points import ScenePayload, build_point
 
 
@@ -51,12 +51,9 @@ def build_scene_points(
         primary_frame = scene.representative_frame or (
             scene.keyframes[0] if scene.keyframes else None
         )
-        vlm_data = (
-            scene.metadata.get("vlm_data")
-            or (primary_frame.metadata.get("vlm_data") if primary_frame else None)
-        ) or unknown_metadata(
-            objects, status="failed", reason="metadata_missing", timestamp_ms=scene.start_ms
-        )
+        if not scene.metadata.get("vlm_data"):
+            aggregate_scene_metadata(scene)
+        vlm_data = scene.metadata["vlm_data"]
 
         frame_index = getattr(primary_frame, "frame_index", 0) if primary_frame else 0
         minio_path = scene.thumbnail_key or f"{scene.video_id}/frame_{frame_index:05d}.jpg"
@@ -90,11 +87,11 @@ def build_scene_points(
 
 
 class _SceneIndexer(Protocol):
-    async def reindex_video(self, video_id: str, points: Sequence[Any]) -> int: ...
+    async def reindex_video(self, video_id: str, batch: RepresentationPoints) -> int: ...
 
 
 async def persist_vectors(
-    video_id: str, points: Sequence[object], scene_indexer: _SceneIndexer
+    video_id: str, points: RepresentationPoints, scene_indexer: _SceneIndexer
 ) -> int:
     try:
         return await scene_indexer.reindex_video(video_id, points)

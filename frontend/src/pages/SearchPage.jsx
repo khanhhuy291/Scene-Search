@@ -57,6 +57,7 @@ export const SearchPage = () => {
       activeRequest.current?.abort()
       const controller = new AbortController()
       activeRequest.current = controller
+      setIsLoadingMore(false)
 
       const mode = options.mode ?? searchOptions.mode
       const limit = options.limit ?? searchOptions.limit
@@ -77,6 +78,7 @@ export const SearchPage = () => {
           exclude: options.exclude ?? null,
           signal: controller.signal
         })
+        if (activeRequest.current !== controller) return
         setResult(next)
         setHasSearched(true)
 
@@ -100,7 +102,7 @@ export const SearchPage = () => {
           )
         }
       } catch (caught) {
-        if (caught.name === "AbortError") return
+        if (caught.name === "AbortError" || activeRequest.current !== controller) return
         setError(caught.message)
         setResult(EMPTY_RESULT)
         setHasSearched(true)
@@ -144,7 +146,9 @@ export const SearchPage = () => {
   }
 
   const handleLoadMore = async () => {
-    if (!result.nextCursor || isLoadingMore) return
+    if (!result.nextCursor || isLoadingMore || isSearching) return
+    const controller = new AbortController()
+    activeRequest.current = controller
     setIsLoadingMore(true)
     try {
       const next = await searchScenes({
@@ -153,16 +157,22 @@ export const SearchPage = () => {
         mode: searchOptions.mode,
         limit: searchOptions.limit,
         require: overrides.require ?? undefined,
-        exclude: overrides.exclude ?? undefined
+        exclude: overrides.exclude ?? undefined,
+        signal: controller.signal
       })
+      if (activeRequest.current !== controller) return
       setResult((previous) => ({
         ...next,
         scenes: [...previous.scenes, ...next.scenes]
       }))
     } catch (caught) {
+      if (caught.name === "AbortError" || activeRequest.current !== controller) return
       addToast(caught.message, "error")
     } finally {
-      setIsLoadingMore(false)
+      if (activeRequest.current === controller) {
+        activeRequest.current = null
+        setIsLoadingMore(false)
+      }
     }
   }
 

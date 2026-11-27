@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 
 export const LoginCard = ({ onSwitchToRegister }) => {
-  const { login, homePath } = useAuth()
+  const { login } = useAuth()
   const { addToast } = useToast()
   const navigate = useNavigate()
 
@@ -42,7 +42,7 @@ export const LoginCard = ({ onSwitchToRegister }) => {
     try {
       const signedIn = await login(email, password)
       addToast('Signed in successfully!', 'success')
-      navigate(signedIn?.role === 'admin' ? '/ingest' : homePath || '/search', { replace: true })
+      navigate(signedIn?.role === 'admin' ? '/ingest' : '/search', { replace: true })
     } catch (err) {
       addToast(err.message || 'Login failed', 'error')
       setErrors({ auth: err.message })

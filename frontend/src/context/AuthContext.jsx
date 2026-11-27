@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import {
   loginApi,
   registerApi,
@@ -37,6 +37,7 @@ export const AuthProvider = ({ children }) => {
   const [refreshToken, setRefreshToken] = useState(null)
   const [usersList, setUsersList] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const sessionRevision = useRef(0)
 
   const persistSession = useCallback((nextUser, accessToken, nextRefreshToken) => {
     const normalized = normalizeUser(nextUser)
@@ -52,6 +53,7 @@ export const AuthProvider = ({ children }) => {
   }, [])
 
   const clearSession = useCallback(() => {
+    sessionRevision.current += 1
     setUser(null)
     setToken(null)
     setRefreshToken(null)
@@ -63,18 +65,20 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUsers = useCallback(async (authToken) => {
     try {
-      const activeToken = authToken || token
-      if (!activeToken) return
-      const res = await listUsersApi(activeToken)
+      if (!authToken) return
+      const res = await listUsersApi(authToken)
       if (res && res.items) {
         setUsersList(res.items.map(normalizeUser))
       }
     } catch (e) {
       console.warn('Could not fetch users list:', e.message)
     }
-  }, [token])
+  }, [])
 
   useEffect(() => {
+    let active = true
+    const revision = sessionRevision.current
+    const isCurrent = () => active && revision === sessionRevision.current
     const initAuth = async () => {
       try {
         const savedToken = localStorage.getItem('scenesearch_jwt')
@@ -94,41 +98,45 @@ export const AuthProvider = ({ children }) => {
 
         try {
           const currentUser = await getMeApi(savedToken)
+          if (!isCurrent()) return
           persistSession(currentUser, savedToken, savedRefreshToken)
           if (currentUser.role === 'admin') {
             fetchUsers(savedToken)
           }
         } catch {
-          if (savedToken && savedUser) {
-            return
-          }
+          if (!isCurrent()) return
           if (!savedRefreshToken) {
             clearSession()
             return
           }
           try {
             const refreshed = await refreshTokenApi(savedRefreshToken)
+            if (!isCurrent()) return
             persistSession(refreshed.user, refreshed.access_token, refreshed.refresh_token)
             if (refreshed.user.role === 'admin') {
               fetchUsers(refreshed.access_token)
             }
           } catch (refreshErr) {
+            if (!isCurrent()) return
             console.error('Session expired:', refreshErr)
             clearSession()
           }
         }
       } catch (e) {
+        if (!isCurrent()) return
         console.error('Error loading stored auth session:', e)
         clearSession()
       } finally {
-        setIsLoading(false)
+        if (active && (isCurrent() || !localStorage.getItem('scenesearch_jwt'))) setIsLoading(false)
       }
     }
 
     initAuth()
+    return () => { active = false }
   }, [clearSession, fetchUsers, persistSession])
 
   const login = async (email, password) => {
+    sessionRevision.current += 1
     setIsLoading(true)
     try {
       const data = await loginApi(email, password)
@@ -143,6 +151,7 @@ export const AuthProvider = ({ children }) => {
   }
 
   const register = async (name, email, password) => {
+    sessionRevision.current += 1
     setIsLoading(true)
     try {
       const data = await registerApi({

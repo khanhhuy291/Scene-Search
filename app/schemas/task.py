@@ -33,7 +33,6 @@ class TaskStatusResponse(BaseModel):
     error_code: str | None = None
     video_id: str | None = None
     celery_task_id: str | None = None
-    pipeline_version: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
     created_at: datetime | None = None

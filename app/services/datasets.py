@@ -16,7 +16,8 @@ from api.v1.media import read_media_object
 from core.privacy import is_anonymized_thumbnail
 from infrastructure.qdrant import get_qdrant_client
 from schemas.datasets import DatasetExportRequest
-from search.catalog import get_catalog
+from search.catalog import keyframe_from_payload
+from search.publication import published_point
 
 
 def _safe_name(value: str) -> str:
@@ -25,14 +26,12 @@ def _safe_name(value: str) -> str:
 
 
 async def build_export_zip(request: DatasetExportRequest) -> Path:
-    catalog = get_catalog()
-    await catalog.ensure_loaded(get_qdrant_client())
-
     missing: list[str] = []
     resolved_items = []
 
     for item in request.items:
-        frame = catalog.get(item.point_id)
+        point = await published_point(get_qdrant_client(), item.point_id)
+        frame = keyframe_from_payload(str(point.id), point.payload or {}) if point else None
         if frame is None:
             missing.append(f"{item.point_id}: unknown keyframe")
             continue
@@ -51,7 +50,7 @@ async def build_export_zip(request: DatasetExportRequest) -> Path:
         "queries": request.queries,
         "model_version": request.model_version,
         "item_count": len(resolved_items),
-        "video_count": 0,
+        "video_count": len({frame.video_id for _, frame in resolved_items}),
         "contents": ["keyframes"],
         "exported_at": datetime.now(UTC).isoformat(),
     }

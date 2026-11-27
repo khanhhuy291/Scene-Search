@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 
 export const RegisterCard = ({ onSwitchToLogin }) => {
-  const { register, homePath } = useAuth()
+  const { register } = useAuth()
   const { addToast } = useToast()
   const navigate = useNavigate()
 
@@ -53,7 +53,7 @@ export const RegisterCard = ({ onSwitchToLogin }) => {
     try {
       const created = await register(name, email, password)
       addToast('Account created successfully!', 'success')
-      navigate(created?.role === 'admin' ? '/ingest' : homePath || '/search', { replace: true })
+      navigate(created?.role === 'admin' ? '/ingest' : '/search', { replace: true })
     } catch (err) {
       addToast(err.message || 'Registration failed', 'error')
       setErrors({ auth: err.message })

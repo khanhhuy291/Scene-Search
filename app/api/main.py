@@ -16,7 +16,7 @@ from core.config import get_settings
 from core.logging import configure_logging
 from infrastructure.minio import get_derived_storage, get_minio_storage, get_raw_storage
 from infrastructure.postgres import close_postgres, get_engine
-from infrastructure.qdrant import close_qdrant, init_qdrant_collections
+from infrastructure.qdrant import close_qdrant, get_qdrant_client
 from infrastructure.redis import check_redis_connection, close_redis
 
 
@@ -58,7 +58,7 @@ async def _initialize_infrastructure() -> None:
     except Exception as exc:
         logger.warning("Redis check skipped/failed: {}", exc)
     try:
-        await init_qdrant_collections()
+        await get_qdrant_client().get_collections()
     except Exception as exc:
         logger.warning("Qdrant check skipped/failed: {}", exc)
     try:
@@ -68,10 +68,10 @@ async def _initialize_infrastructure() -> None:
 
 
 async def _warm_search() -> None:
-    """Load the keyframe catalog and query encoder ahead of the first search.
+    """Load query encoders ahead of the first search.
 
     Deliberately not awaited during startup. Together these take some seconds --
-    reading every payload, then loading encoder weights -- and blocking startup on
+    loading encoder weights -- and blocking startup on
     them would delay readiness checks and make a deploy look hung. Run in the
     background, the cost lands before a user types instead of inside their first
     query.
@@ -79,19 +79,6 @@ async def _warm_search() -> None:
 
     try:
         settings = get_settings()
-        from infrastructure.qdrant import get_qdrant_client
-        from search.catalog import get_catalog
-
-        qdrant_client = get_qdrant_client()
-        try:
-            await get_catalog().ensure_loaded(qdrant_client)
-            logger.info("Keyframe catalog warmup complete")
-            from api.v1.media import precache_startup_thumbnails
-
-            asyncio.create_task(precache_startup_thumbnails(limit=100))
-        except Exception as exc:
-            logger.warning("Catalog warmup skipped/failed: {}", exc)
-
         mode = settings.search.mode.lower()
         if mode == "qwen":
             from ml.encoder import get_qwen_encoder

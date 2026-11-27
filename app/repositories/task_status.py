@@ -65,9 +65,9 @@ async def _create_postgres(record: TaskStatusResponse) -> None:
                 """
                 INSERT INTO ingestion_tasks
                     (task_id, video_path, status, progress, video_id, celery_task_id,
-                     pipeline_version, created_at, updated_at)
+                     created_at, updated_at)
                 VALUES (:task_id, :video_path, :status, :progress, :video_id,
-                        :celery_task_id, :pipeline_version, :created_at, :updated_at)
+                        :celery_task_id, :created_at, :updated_at)
                 """
             ),
             {
@@ -77,7 +77,6 @@ async def _create_postgres(record: TaskStatusResponse) -> None:
                 "progress": record.progress,
                 "video_id": UUID(record.video_id) if record.video_id else None,
                 "celery_task_id": record.celery_task_id,
-                "pipeline_version": record.pipeline_version,
                 "created_at": record.created_at,
                 "updated_at": record.updated_at,
             },
@@ -191,7 +190,6 @@ async def create_task_status(
     *,
     video_id: str | None = None,
     celery_task_id: str | None = None,
-    pipeline_version: str | None = None,
 ) -> TaskStatusResponse:
     now = datetime.now(UTC)
     record = TaskStatusResponse(
@@ -201,7 +199,6 @@ async def create_task_status(
         progress=0,
         video_id=video_id,
         celery_task_id=celery_task_id,
-        pipeline_version=pipeline_version,
         created_at=now,
         updated_at=now,
     )
@@ -257,7 +254,7 @@ async def get_task_status(task_id: str) -> TaskStatusResponse | None:
                 text(
                     """
                     SELECT task_id, video_path, status, progress, result, error,
-                           error_code, video_id, celery_task_id, pipeline_version,
+                           error_code, video_id, celery_task_id,
                            started_at, finished_at, created_at, updated_at
                     FROM ingestion_tasks WHERE task_id = :task_id
                     """
@@ -308,7 +305,7 @@ async def list_task_statuses(
             text(
                 f"""
                 SELECT task_id, video_path, status, progress, result, error,
-                       error_code, video_id, celery_task_id, pipeline_version,
+                       error_code, video_id, celery_task_id,
                        started_at, finished_at, created_at, updated_at
                 FROM ingestion_tasks
                 {where}

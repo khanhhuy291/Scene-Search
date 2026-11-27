@@ -61,7 +61,7 @@ export const JobTable = ({ jobs, loading, onRefresh }) => (
                     {job.video_path || 'UNTITLED VIDEO'}
                   </p>
                   <p className="text-[10px] text-stone-500 mt-0.5">
-                    TASK: {job.task_id.slice(0, 8)} · V: {job.pipeline_version || 'legacy'}
+                    TASK: {job.task_id.slice(0, 8)}
                   </p>
                 </td>
                 <td className="px-4 py-4">

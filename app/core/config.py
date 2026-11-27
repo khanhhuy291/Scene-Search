@@ -200,6 +200,8 @@ class QdrantSettings(_BaseSettings):
     timeout: float = Field(default=10.0, gt=0)
     prefer_grpc: bool = False
     collection: str = "Scences"
+    chunk_collection: str = "scene_chunks"
+    keyframe_collection: str = "scene_keyframes"
     # ADR-0001: not pinned to one encoder. Points carry ``model_version`` so a
     # dimension change is a re-index rather than a schema migration.
     vector_size: int = Field(default=768, ge=64, le=4096)
@@ -207,6 +209,14 @@ class QdrantSettings(_BaseSettings):
     # Named-vector collections are read-only unless deployment explicitly opts in
     write_vector_name: str = ""
     allow_named_vector_writes: bool = False
+
+    @model_validator(mode="after")
+    def distinct_scene_collections(self) -> QdrantSettings:
+        if not self.chunk_collection.strip() or not self.keyframe_collection.strip():
+            raise ValueError("Scene collection names must not be empty")
+        if self.chunk_collection == self.keyframe_collection:
+            raise ValueError("Chunks and keyframes require distinct collections")
+        return self
 
 
 class MLSettings(_BaseSettings):
@@ -298,29 +308,35 @@ class VideoSettings(_BaseSettings):
     sample_fps: float = Field(default=1.0, gt=0, le=60)
     sampling_max_gap_sec: float = Field(default=2.0, gt=0, le=60)
     sampling_ssim_threshold: float = Field(default=0.98, ge=0, le=1)
-    # Drop a frame whose cosine similarity to the last kept frame exceeds this.
-    # Driving footage is highly redundant when the vehicle is stopped, and this
-    # is the single largest lever on index cost.
-    dedup_threshold: float = Field(default=0.98, ge=0.5, le=1.0)
-    # Set to 1.0 to disable deduplication entirely.
-    dedup_enabled: bool = True
-
-    # Segment aggregation: consecutive frames are mean-pooled into clip-level
-    # vectors so a query can return a watchable span rather than a still.
-    segment_seconds: float = Field(default=5.0, gt=0, le=5)
+    # Semantic scenes and retrieval chunks have independent temporal roles.
+    # These initial thresholds require calibration against the selected corpus.
+    semantic_context_window_s: float = Field(default=2.0, gt=0, allow_inf_nan=False)
     segment_gap_tolerance_s: float = Field(default=1.0, ge=0, le=10)
-    # Content boundaries use the existing local defaults; thresholds remain tunable.
-    # These are cosine distances (1 - cosine); increasing them suppresses more boundaries.
-    # The global distance also limits deviation from the pending centroid for confirmation.
-    scene_local_distance: float = Field(default=0.10, ge=0, le=2, allow_inf_nan=False)
-    scene_global_distance: float = Field(default=0.15, ge=0, le=2, allow_inf_nan=False)
-    scene_min_duration_s: float = Field(default=2.0, ge=0, allow_inf_nan=False)
-    scene_confirmation_s: float = Field(default=0.4, ge=0, allow_inf_nan=False)
-    vlm_max_frames: int = Field(default=1, ge=1, le=3)
-    vlm_novelty_distance: float | None = Field(default=None, ge=0, le=2, allow_inf_nan=False)
+    # Zero preserves the existing partial-context baseline; diagnostics expose coverage.
+    semantic_min_window_coverage: float = Field(default=0.0, ge=0, le=1, allow_inf_nan=False)
+    semantic_smoothing_window_s: float = Field(default=1.0, ge=0, allow_inf_nan=False)
+    semantic_adaptive_threshold: bool = True
+    semantic_threshold_floor: float = Field(default=0.05, gt=0, le=2, allow_inf_nan=False)
+    semantic_mad_multiplier: float = Field(default=3.0, ge=0, allow_inf_nan=False)
+    semantic_min_scene_duration_s: float = Field(default=3.0, ge=0, allow_inf_nan=False)
+    semantic_merge_similar_scenes: bool = True
+    semantic_merge_distance: float = Field(default=0.10, ge=0, le=2, allow_inf_nan=False)
+    semantic_strong_boundary_distance: float = Field(default=0.15, ge=0, le=2, allow_inf_nan=False)
+    retrieval_chunk_duration_s: float = Field(default=8.0, gt=0, allow_inf_nan=False)
+    retrieval_chunk_stride_s: float = Field(default=6.0, gt=0, allow_inf_nan=False)
+    # Initial selector settings; calibrate frame budgets and scores on the corpus.
+    keyframe_min_frames: int = Field(default=3, ge=1)
+    keyframe_max_frames: int = Field(default=6, ge=1)
+    keyframe_novelty_distance: float = Field(default=0.02, ge=0, le=2, allow_inf_nan=False)
+    keyframe_quality_weight: float = Field(default=0.05, ge=0, le=1, allow_inf_nan=False)
+    # Desired temporal coverage, capped by vlm_max_frames when a smaller budget is selected.
+    vlm_min_frames: int = Field(default=3, ge=1)
+    vlm_max_frames: int = Field(default=3, ge=1)
+    vlm_novelty_distance: float | None = Field(default=0.02, ge=0, le=2, allow_inf_nan=False)
     vlm_concurrency: int = Field(default=2, ge=1)
     vlm_timeout_s: float = Field(default=30, gt=0, allow_inf_nan=False)
-    vlm_attempts_per_frame: int = Field(default=2, ge=1)
+    vlm_max_tokens: int = Field(default=4096, ge=1)
+    vlm_attempts_per_request: int = Field(default=2, ge=1)
 
     # Full-video derived playback preserves source imagery/cadence. Encoding
     # settings apply to the non-H.264 fallback; preview_fps is a legacy option.
@@ -334,22 +350,15 @@ class VideoSettings(_BaseSettings):
     max_pixels: int = Field(default=4096 * 2160, gt=0)
 
     @model_validator(mode="after")
-    def segment_must_span_multiple_samples(self) -> VideoSettings:
+    def validate_chunk_and_frame_budgets(self) -> VideoSettings:
+        if self.retrieval_chunk_stride_s > self.retrieval_chunk_duration_s:
+            raise ValueError("Retrieval chunk stride must not exceed its duration")
+        if self.retrieval_chunk_duration_s < 2 / self.sample_fps:
+            raise ValueError("Retrieval chunks must span at least two sample intervals")
+        if self.keyframe_min_frames > self.keyframe_max_frames:
+            raise ValueError("Keyframe minimum must not exceed the maximum")
         if self.vlm_max_frames > 1 and self.vlm_novelty_distance is None:
             raise ValueError("Multi-frame VLM requires an explicit novelty distance")
-        # A segment shorter than one sample interval would contain at most one
-        # frame, which makes segment granularity indistinguishable from frame
-        # granularity while still doubling the index size.
-        if self.segment_seconds < 2.0 / self.sample_fps:
-            raise ValueError(
-                f"VIDEO_SEGMENT_SECONDS={self.segment_seconds} is too short to hold two "
-                f"frames at VIDEO_SAMPLE_FPS={self.sample_fps}"
-            )
-        if (
-            self.scene_min_duration_s > self.segment_seconds
-            or self.scene_confirmation_s >= self.segment_seconds
-        ):
-            raise ValueError("Content segmentation durations must fit the scene maximum")
         return self
 
 
@@ -418,13 +427,6 @@ class SearchSettings(_BaseSettings):
         default="hybrid",
         validation_alias=AliasChoices("SEARCH_MODE", "SEARCH_DEFAULT_MODE"),
     )
-    visual_vector: str = "siglip"
-    caption_vector: str = ""
-
-    # Cadence used to recover a timestamp when the payload has a frame index
-    # (``frame_id`` / ``frame_00034.jpg``) but no ``timestamp_sec``. The live
-    # Viettech collection is sampled at the MOT annotation rate.
-    keyframe_fps: float = Field(default=5.0, gt=0, le=60)
 
     # Tri-Tier Adaptive Agentic Search controls
     agentic_enabled: bool = False

@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from pipelines.common.metadata import TemporalObservation
+
 
 class SceneObservation(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -19,6 +21,7 @@ class SceneObservation(BaseModel):
     attributes: dict[str, Any] = Field(default_factory=dict)
     present_concepts: list[str] = Field(default_factory=list)
     absent_concepts: list[str] = Field(default_factory=list)
+    unknown_concepts: list[str] = Field(default_factory=list)
     objects: list[str] = Field(default_factory=list)
     object_counts: dict[str, int] = Field(default_factory=dict)
     behaviors: list[str] = Field(default_factory=list)
@@ -27,6 +30,8 @@ class SceneObservation(BaseModel):
     def consistent_evidence(self) -> "SceneObservation":
         if set(self.present_concepts) & set(self.absent_concepts):
             raise ValueError("Observation has contradictory concepts")
+        if set(self.unknown_concepts) & (set(self.present_concepts) | set(self.absent_concepts)):
+            raise ValueError("Observation has contradictory unknown concepts")
         if any(count < 1 for count in self.object_counts.values()):
             raise ValueError("Observed object counts must be positive")
         return self
@@ -36,11 +41,11 @@ class SceneEvidence(BaseModel):
     # Summary metadata (caption, scene, road, etc.) remains in the same JSON object.
     model_config = ConfigDict(extra="allow")
 
-    schema_version: Literal[2] = 2
-    observations: list[SceneObservation] = Field(max_length=3)
+    observations: list[SceneObservation]
     sampled_count: int | None = Field(default=None, ge=1)
-    candidate_count: int = Field(ge=1, le=3)
-    succeeded_count: int = Field(ge=0, le=3)
+    candidate_count: int = Field(ge=1)
+    succeeded_count: int = Field(ge=0)
+    temporal_observations: list[TemporalObservation] = Field(default_factory=list)
     complete_for_selected_frames: bool
     coverage_scope: Literal["selected_instants"] = "selected_instants"
     observed_timestamps_ms: list[int]
@@ -51,6 +56,17 @@ class SceneEvidence(BaseModel):
 
     @model_validator(mode="after")
     def consistent_selection(self) -> "SceneEvidence":
+        successful = {
+            o.frame_index: o.timestamp_ms for o in self.observations if o.status == "success"
+        }
+        for observation in self.temporal_observations:
+            if any(
+                successful.get(index) != timestamp
+                for index, timestamp in zip(
+                    observation.frame_indices, observation.timestamps_ms, strict=True
+                )
+            ):
+                raise ValueError("Temporal inference requires successful observation evidence")
         if len(self.observations) != self.candidate_count:
             raise ValueError("Observation count does not match selection")
         if len({o.frame_index for o in self.observations}) != self.candidate_count:

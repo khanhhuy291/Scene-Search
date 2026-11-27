@@ -21,7 +21,7 @@ export function AuthPage() {
   const [searchParams] = useSearchParams()
   const initialMode = searchParams.get('mode') === 'register' ? 'register' : 'login'
   const [mode, setMode] = useState(initialMode)
-  const { login, register, homePath } = useAuth()
+  const { login, register, homePath, isAuthenticated, isLoading } = useAuth()
   const { addToast } = useToast()
   const navigate = useNavigate()
 
@@ -33,6 +33,10 @@ export function AuthPage() {
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (isAuthenticated && !isLoading) navigate(homePath, { replace: true })
+  }, [isAuthenticated, isLoading, homePath, navigate])
 
   useEffect(() => {
     setErrors({})
@@ -77,13 +81,11 @@ export function AuthPage() {
     setIsSubmitting(true)
     try {
       if (mode === 'login') {
-        const signedIn = await login(email, password)
+        await login(email, password)
         addToast('Signed in successfully! Welcome back.', 'success')
-        navigate(signedIn?.role === 'admin' ? '/ingest' : homePath || '/search', { replace: true })
       } else {
-        const created = await register(name, email, password)
+        await register(name, email, password)
         addToast('Account created successfully! Welcome to SceneSearch.', 'success')
-        navigate(created?.role === 'admin' ? '/ingest' : homePath || '/search', { replace: true })
       }
     } catch (err) {
       addToast(err.message || 'Authentication failed', 'error')
@@ -121,7 +123,7 @@ export function AuthPage() {
         <div className="lg:col-span-5 space-y-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-white border-2 border-black shadow-[2px_2px_0px_0px_#000] font-mono text-[11px] font-black uppercase tracking-wider text-black">
             <Terminal className="w-3.5 h-3.5 text-[#FF5500]" />
-            <span>AUTHENTICATION PROTOCOL // v2.4</span>
+            <span>AUTHENTICATION PROTOCOL</span>
           </div>
 
           <h1 className="text-4xl sm:text-5xl font-black uppercase tracking-tight leading-[0.95] text-black">

@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { exportDatasetZip } from '../api/datasets'
 import { useAuth } from './AuthContext'
 
-/** v2 drops reviewer approval — engineers download freely. */
+/** Engineers can download datasets directly. */
 const STORAGE_KEY = 'scenesearch_datasets_v2'
 
 const emptyDraft = (user) => ({
