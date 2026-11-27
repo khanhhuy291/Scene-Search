@@ -17,9 +17,7 @@ export const SceneGrid = ({
   searchMeta = null,
   isSearching = false,
   isLoadingMore = false,
-  onLoadMore,
-  onRemoveConcept,
-  onRunQuery
+  onLoadMore
 }) => {
   const [sortBy, setSortBy] = useState("relevance")
   const { isEngineer } = useAuth()
@@ -187,8 +185,6 @@ export const SceneGrid = ({
         <QueryInterpretationStrip
           query={query}
           result={result}
-          onRemoveConcept={onRemoveConcept}
-          onRunQuery={onRunQuery}
         />
         <div className="text-center py-16 space-y-4 p-8 bg-white dark:bg-[#1A1815] border-2 border-black dark:border-[#2E2A25] shadow-[6px_6px_0px_0px_#000] font-mono">
           <p className="text-base font-black text-black dark:text-white uppercase">
@@ -213,8 +209,6 @@ export const SceneGrid = ({
       <QueryInterpretationStrip
         query={query}
         result={result}
-        onRemoveConcept={onRemoveConcept}
-        onRunQuery={onRunQuery}
       />
 
       {/* Controls & Summary Header */}

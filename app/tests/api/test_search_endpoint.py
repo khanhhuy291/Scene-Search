@@ -166,17 +166,31 @@ async def test_result_carries_the_evidence_the_card_shows(client, stub_engine) -
 
 
 @pytest.mark.asyncio
-async def test_overrides_are_forwarded_so_a_chip_can_be_removed(client, stub_engine) -> None:
+async def test_removed_search_options_are_rejected(client, stub_engine) -> None:
     engine = stub_engine(_outcome())
-    await client.post(
-        "/api/v1/search",
-        json={"query": "rainy day without people", "require": ["rain"], "exclude": []},
-    )
+    for option in [
+        {"require": ["rain"]},
+        {"exclude": []},
+        {"agentic": True},
+        {"rerank": True},
+        {"mode": "visual"},
+        {"mode": "caption"},
+    ]:
+        response = await client.post("/api/v1/search", json={"query": "rain", **option})
+        assert response.status_code == 422
+    assert not engine.calls
 
-    # An empty list must survive as an empty list. Collapsing it to None would
-    # reinstate the inferred exclusion and the chip would never come off.
-    assert engine.calls[0]["exclude"] == []
-    assert engine.calls[0]["require"] == ["rain"]
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["siglip", "qwen", "hybrid"])
+async def test_user_mode_is_respected_over_server_default(client, stub_engine, mode):
+    from core.config import get_settings
+
+    get_settings().search.mode = "qwen"
+    engine = stub_engine(_outcome())
+    response = await client.post("/api/v1/search", json={"query": "rain", "mode": mode})
+    assert response.status_code == 200
+    assert engine.calls[0]["mode"] == mode
 
 
 @pytest.mark.asyncio

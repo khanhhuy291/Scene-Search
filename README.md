@@ -36,7 +36,7 @@ Trong quá trình phát triển hệ thống xe tự hành (Autonomous Vehicles)
 **SceneSearch (P-081)** là nền tảng tìm kiếm ngữ nghĩa đa phương thức và trích xuất lát cắt dữ liệu (Dataset Slicing Engine) chuyên dụng cho xe tự hành:
 
 - 🔍 **Tìm kiếm đa ngôn ngữ tự nhiên (Natural Language Search):** Hỗ trợ câu truy vấn tiếng Việt và tiếng Anh (ví dụ: *"xe cứu hỏa bật đèn chớp ban đêm"*, *"ford minivan dừng đèn đỏ trời mưa"*), trích xuất chính xác đến từng mốc thời gian (0.5s timestamp).
-- 🧠 **Tri-Tier Agentic Search & Visual-HyDE:** Tích hợp bộ phân loại OOD Guardrail chặn câu truy vấn rác, cơ chế Visual-HyDE mở rộng mô tả góc nhìn kính lái và vòng lặp phản tư (Reflection loop) tự động nới lỏng điều kiện khi gặp zero-hit.
+- 🧠 **Ba chế độ tìm kiếm vector:** **SigLIP**, **Qwen**, hoặc **SigLIP + Qwen + RRF**. Query được embedding nguyên văn rồi so sánh với named vector tương ứng trong Qdrant; chế độ kết hợp dùng RRF trọng số bằng nhau, `k=60`.
 - 🎭 **Tự động làm mờ khuôn mặt & biển số xe (Automated Anonymization - ADR-0003):** Quy trình 2-bucket bảo mật tuyệt đối, lưu video gốc trong `scenesearch-raw` và chỉ cung cấp khung hình đã ẩn danh bằng YOLOv8/Gaussian Blur trong `scencesearch-frames`.
 - 📦 **Trích xuất phân đoạn Dataset (Dataset Slicing & JSONL Export):** Cho phép kỹ sư AI gom các phân đoạn tìm được vào khay bản nháp (Dataset Draft) và tải về file manifest `JSONL` kèm gói ảnh `ZIP` chuẩn hóa cho PyTorch / HuggingFace.
 - ⏱️ **Giám sát thời gian thực (In-App APM Tracing):** Tích hợp công cụ Trace Explorer trong Admin với biểu đồ Gantt Waterfall phân tích chi tiết độ trễ từng micro-span (LLM, Embedding, Qdrant, Cache) trên bộ nhớ RAM.
@@ -72,14 +72,14 @@ Trong quá trình phát triển hệ thống xe tự hành (Autonomous Vehicles)
 | Dịch vụ (Service) | Trách nhiệm (Responsibility) | Địa chỉ mặc định |
 | :--- | :--- | :--- |
 | **Frontend** | Giao diện React 19 tìm kiếm, xem video seek tức thời, khay dataset, admin APM & benchmark | http://localhost:5173 (Dev) / Port 80 |
-| **API** | Xác thực JWT, tìm kiếm Tri-Tier, proxy media an toàn, điều phối tác vụ ingest | http://localhost:8000 |
+| **API** | Xác thực JWT, tìm kiếm vector SigLIP/Qwen/RRF, proxy media an toàn, điều phối tác vụ ingest | http://localhost:8000 |
 | **Embedding API** | Vi dịch vụ trích xuất đặc trưng đa phương thức Qwen3-VL-2B (2048d) & SigLIP (768d) | http://localhost:8001 |
 | **Worker** | Ingestion pipeline (`pipelines.ingestion`): giải mã video, trích khung hình SSIM, YOLOv8 blur mặt & biển số | Nội bộ (Celery Daemon) |
 | **PostgreSQL** | Lưu trữ người dùng, quyền RBAC, metadata corpus, tác vụ nền, đánh giá RLHF | localhost:5432 / Google Cloud SQL |
 | **Redis** | Bộ nhớ đệm trạng thái tác vụ, message broker Celery và kết quả worker | localhost:6379 / Upstash Redis |
 | **MinIO / GCS** | Lưu trữ phân tách 2-bucket: video gốc (`raw`) và khung hình phái sinh đã ẩn danh (`derived`) | http://localhost:9001 / GCS |
 | **Qdrant** | Lưu trữ và tìm kiếm vector tương đồng cosine kết hợp bộ lọc payload HNSW | http://localhost:6333/dashboard |
-| **LLM Reasoning** | NVIDIA NIM API (`moonshotai/kimi-k3`): phân loại OOD guardrail, sinh mô tả Visual-HyDE | Cloud API |
+| **LLM Reasoning** | OpenAI-compatible API: chat và làm giàu caption; không tham gia endpoint search | Cloud API |
 
 *Ghi chú cho macOS:* Chạy backing services trong Docker (`make docker-infra`) và chạy API/worker trực tiếp trên host để tận dụng Apple Silicon Metal (MPS) tăng tốc suy luận (ADR-0001).
 
@@ -97,7 +97,7 @@ SceneSearch-P-081/
 |   |-- infrastructure/             # Adapters kết nối: Postgres, Redis, MinIO, Qdrant
 |   |-- pipelines/ingestion/        # Ingest stages: decode, SSIM sample, YOLOv8 anonymize
 |   |-- worker/                     # Celery app và ingest tasks
-|   |-- search/                     # Engine tìm kiếm Tri-Tier, HyDE, catalog, write path
+|   |-- search/                     # Engine tìm kiếm vector SigLIP/Qwen/RRF, HyDE, catalog, write path
 |   |-- services/                   # Business logic: auth, admin, dataset export
 |   |-- ml/                         # Encoders: Qwen3-VL, SigLIP, remote client, anonymizer
 |   |-- eval/                       # Retrieval evaluation harness & benchmark runner
@@ -207,7 +207,8 @@ Toàn bộ cấu hình hệ thống được nạp từ biến môi trường v�
 | `QDRANT_COLLECTION` | Tên collection vector (Write path mặc định `scenes`, remote index Viettech là `Scences`) | `scenes` |
 | `AUTH_SECRET_KEY` | Khóa bí mật ký JWT Token | Chuỗi ngẫu nhiên bảo mật |
 | `QWEN_EMBEDDING_URL` | Địa chỉ microservice embedding Qwen3-VL | `http://localhost:8001` |
-| `NVIDIA_API_KEY` | API Key NVIDIA NIM phục vụ LLM Guardrail & Visual-HyDE | `nvapi-...` |
+| `SEARCH_MODE` | Chế độ mặc định: `siglip`, `qwen`, `hybrid` (SigLIP + Qwen + RRF) | `qwen` |
+| `LLM_API_KEY` | API key cho chat/caption; search không cần LLM | Để trống nếu không dùng |
 
 ---
 
@@ -227,7 +228,9 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 # 3. Tìm kiếm ngữ nghĩa bằng ngôn ngữ tự nhiên
 curl -X POST http://localhost:8000/api/v1/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "xe cứu hỏa ban đêm bật đèn chớp", "limit": 10}'
+  -d '{"query": "xe cứu hỏa ban đêm bật đèn chớp", "limit": 10, "mode": "hybrid"}'
+
+# mode: siglip | qwen | hybrid. hybrid luôn gọi cả hai model, không tự fallback.
 
 # 4. Upload video mới vào hàng đợi xử lý (Yêu cầu Admin Token)
 curl -X POST http://localhost:8000/api/v1/ingest/upload \
@@ -342,7 +345,7 @@ Hệ thống được đánh giá thực nghiệm toàn diện trên tập chu�
 | [docs/MVP.md](docs/MVP.md) | Tiêu chí bàn giao MVP, bài kiểm thử chấp nhận và roadmap |
 | [docs/architecture_diagram.md](docs/architecture_diagram.md) | Sơ đồ Mermaid và đặc tả chi tiết kiến trúc microservices |
 | [docs/DOCKER_GCLOUD_GUIDE.md](docs/DOCKER_GCLOUD_GUIDE.md) | Hướng dẫn Docker dùng chung local/GCP GPU VM |
-| [docs/AGENTIC_SEARCH.md](docs/AGENTIC_SEARCH.md) | Thiết kế thuật toán Tri-Tier Agentic Search, Visual-HyDE và Reflection |
+| [docs/AGENTIC_SEARCH.md](docs/AGENTIC_SEARCH.md) | Tài liệu lịch sử; luồng này đã được thay bằng vector search SigLIP/Qwen/RRF |
 | [docs/adr/ADR-0001-mps-acceleration.md](docs/adr/ADR-0001-mps-acceleration.md) | Lựa chọn tăng tốc Metal (MPS) trên Apple Silicon |
 | [docs/adr/ADR-0002-two-bucket-storage.md](docs/adr/ADR-0002-two-bucket-storage.md) | Thiết kế 2-bucket lưu trữ bảo vệ quyền riêng tư người dùng |
 | [docs/adr/ADR-0003-anonymization-pipeline.md](docs/adr/ADR-0003-anonymization-pipeline.md) | Quy trình tự động làm mờ khuôn mặt và biển số xe |

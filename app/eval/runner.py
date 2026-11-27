@@ -11,12 +11,9 @@ later without its caveat. Three things it will not do:
   catastrophic retrieval;
 * average a missing value in as zero.
 
-Ablations (FR-EVAL-04) are the variants that *exist*. The SRS names five: ±filters,
-±prompt expansion, ±dedup, ±rerank, and frame vs segment. Only two of those are
-real on this system today — strict concept filtering, and the similarity floor —
-plus the tower split, which is the more informative comparison anyway. The rest
-are listed in the report as not applicable with the reason, because a table with
-silent gaps invites the reader to assume they were zero.
+The comparison runs SigLIP, Qwen, and SigLIP + Qwen + RRF against the same
+independent truth. Optional min_score is passed explicitly; no inferred concept
+filters or caption search participate in retrieval.
 """
 
 from __future__ import annotations
@@ -288,29 +285,11 @@ def _is_control(result: CaseResult, suite: Sequence[QueryCase]) -> bool:
 
 # -- ablations ----------------------------------------------------------------
 
-# FR-EVAL-04's list, mapped onto what this system actually has. The entries that
-# do not exist are carried so the report can say why rather than omitting a row.
+# Compare the three supported retrieval choices using the same evaluation suite.
 ABLATIONS: tuple[tuple[str, dict[str, Any] | None, str], ...] = (
-    ("baseline", {}, "hybrid retrieval as shipped"),
-    ("visual only", {"mode": "visual"}, "the SigLIP tower alone, no caption evidence"),
-    ("caption only", {"mode": "caption"}, "caption signals alone, no image similarity"),
-    (
-        "no strict concepts",
-        {"strict": False},
-        "a named concept becomes a preference rather than a hard filter",
-    ),
-    (
-        "no similarity floor",
-        {"min_score": 0.0},
-        "only meaningful together with SEARCH_VISUAL_FLOOR=0 in the environment",
-    ),
-    ("prompt expansion", None, "not applicable — no query expansion exists"),
-    ("rerank", None, "not applicable — no reranker exists"),
-    (
-        "frame vs segment",
-        None,
-        "not applicable — the attached index stores keyframes only, no segments",
-    ),
+    ("baseline", {"mode": "hybrid"}, "SigLIP + Qwen with equal-weight RRF (k=60)"),
+    ("siglip", {"mode": "siglip"}, "SigLIP query embeddings against the siglip vector"),
+    ("qwen", {"mode": "qwen"}, "Qwen query embeddings against the qwen vector"),
 )
 
 

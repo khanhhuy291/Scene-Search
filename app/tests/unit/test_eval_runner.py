@@ -25,7 +25,6 @@ from eval.report import compare_to_baseline, to_json, to_markdown
 from eval.runner import run_ablations, run_case, run_suite
 from eval.suite import BEHAVIOURAL, OBJECT, QueryCase
 from eval.truth import MotGroundTruth, ResultRef, Source, at_least, none_of
-from search.catalog import KeyframeCatalog
 from search.engine import SceneSearchEngine
 
 
@@ -39,6 +38,7 @@ class FakePoint:
 class FakeScored:
     id: str
     score: float
+    payload: dict[str, Any]
 
 
 class FakeResponse:
@@ -60,7 +60,7 @@ class FakeQdrant:
         limit = kwargs.get("limit", len(self._points))
         threshold = kwargs.get("score_threshold")
         scored = [
-            FakeScored(id=p.id, score=self._scores.get(p.id, self.DEFAULT_SCORE))
+            FakeScored(id=p.id, score=self._scores.get(p.id, self.DEFAULT_SCORE), payload=p.payload)
             for p in self._points[:limit]
         ]
         if threshold is not None:
@@ -71,19 +71,6 @@ class FakeQdrant:
 class FakeEncoder:
     def encode_texts(self, texts: list[str]) -> list[list[float]]:
         return [[0.1, 0.2, 0.3] for _ in texts]
-
-
-@pytest.fixture(autouse=True)
-def pinned_tuning(monkeypatch: pytest.MonkeyPatch):
-    from core.config import get_settings
-
-    monkeypatch.setenv("SEARCH_VISUAL_FLOOR", "0.09")
-    monkeypatch.setenv("SEARCH_CAPTION_FLOOR", "0.0")
-    monkeypatch.setenv("SEARCH_STRICT_CONCEPTS", "true")
-    monkeypatch.setenv("SEARCH_AGENTIC_ENABLED", "false")
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
 
 
 def _keyframe(point_id: str, video_id: str, caption: str, frame_no: int) -> FakePoint:
@@ -127,9 +114,7 @@ def _object_truth() -> ObjectTruth:
 def _engine(scores: dict[str, float] | None = None) -> SceneSearchEngine:
     return SceneSearchEngine(
         client=FakeQdrant(CORPUS, scores),
-        catalog=KeyframeCatalog(),
         encoder=FakeEncoder(),
-        caption_encoder=None,
         collection="scenes",
     )
 
@@ -251,10 +236,11 @@ async def test_a_query_that_raises_is_reported_not_swallowed() -> None:
 @pytest.mark.asyncio
 async def test_an_unanswerable_query_passes_when_the_floor_rejects_it() -> None:
     case = _case("neg-x", "spiderman", at_least("__never__", 1), expect_empty=True)
-    # Every candidate scores below the calibrated floor, which is what the real
-    # index does for an out-of-domain query.
+    # An explicitly requested cosine cutoff rejects low-scoring candidates.
     engine = _engine(scores={p.id: 0.01 for p in CORPUS})
-    result = await run_case(engine, case, _judge([case]), limit=10)
+    result = await run_case(
+        engine, case, _judge([case]), limit=10, search_kwargs={"min_score": 0.09}
+    )
     assert result.status == "control_pass"
 
 
@@ -343,12 +329,10 @@ async def test_ablations_run_the_variants_that_exist_and_name_the_ones_that_do_n
     )
     by_name = {name: (note, report) for name, note, report in results}
 
-    assert by_name["baseline"][1] is not None
-    assert by_name["visual only"][1] is not None
-    # Not silently omitted: listed with the reason, so a reader cannot mistake an
-    # absent row for a zero.
-    assert by_name["rerank"][1] is None
-    assert "no reranker" in by_name["rerank"][0]
+    assert set(by_name) == {"baseline", "siglip", "qwen"}
+    for _, report in by_name.values():
+        assert report is not None
+        assert all(case.status != "error" for case in report.cases)
 
 
 @pytest.mark.asyncio

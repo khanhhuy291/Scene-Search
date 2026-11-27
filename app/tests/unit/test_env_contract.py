@@ -37,11 +37,11 @@ def test_native_settings_do_not_read_cwd_env(tmp_path):
 
 def test_environment_overrides_dotenv_for_each_settings_group(monkeypatch, tmp_path):
     path = tmp_path / ".env"
-    path.write_text("SEARCH_RERANK_ENABLED=true\nQWEN_EMBEDDING_TIMEOUT=111\n")
-    monkeypatch.setenv("SEARCH_RERANK_ENABLED", "false")
+    path.write_text("SEARCH_MODE=qwen\nQWEN_EMBEDDING_TIMEOUT=111\n")
+    monkeypatch.setenv("SEARCH_MODE", "siglip")
     from core.config import MLSettings, SearchSettings
 
-    assert SearchSettings(_env_file=path).rerank_enabled is False
+    assert SearchSettings(_env_file=path).mode == "siglip"
     assert MLSettings(_env_file=path).qwen_embedding_timeout == 111
 
 
@@ -62,8 +62,7 @@ def test_compose_honors_app_options_and_only_overrides_network_routing(tmp_path)
     (tmp_path / "app").mkdir()
     sample = APP_ENV_FILE.with_name(".env.example").read_text()
     changes = {
-        "SEARCH_RERANK_ENABLED=true": "SEARCH_RERANK_ENABLED=false",
-        "SEARCH_AGENTIC_ENABLED=true": "SEARCH_AGENTIC_ENABLED=false",
+        "SEARCH_MODE=qwen": "SEARCH_MODE=siglip",
         "QDRANT_COLLECTION=scenes_local": "QDRANT_COLLECTION=test_collection",
         "QWEN_EMBEDDING_TIMEOUT=300": "QWEN_EMBEDDING_TIMEOUT=99",
         "APP_DEBUG=false": "APP_DEBUG=true",
@@ -84,8 +83,7 @@ def test_compose_honors_app_options_and_only_overrides_network_routing(tmp_path)
     services = json.loads(result.stdout)["services"]
     for service in ["api", "worker", "embedding-api"]:
         env = services[service]["environment"]
-        assert env["SEARCH_RERANK_ENABLED"] == "false"
-        assert env["SEARCH_AGENTIC_ENABLED"] == "false"
+        assert env["SEARCH_MODE"] == "siglip"
         assert env["QDRANT_COLLECTION"] == "test_collection"
         assert env["QWEN_EMBEDDING_TIMEOUT"] == "99"
         assert env["APP_DEBUG"] == "true"

@@ -145,7 +145,7 @@ export const toScene = (result, index) => {
     previewBaseUrl: basePreview ? basePreview.split('#')[0] : null,
     frameNo: result.frame_no,
     keyframesMatched: result.keyframes_matched ?? result.matched ?? 1,
-    totalKeyframes: result.total_keyframes ?? result.total_kf ?? 8,
+    totalKeyframes: result.keyframes_in_video || result.total_keyframes || result.total_kf || 0,
     confirmed: result.confirmed ?? [],
     denied: result.denied ?? [],
     contradictionNote: result.contradiction_note || null,
@@ -162,7 +162,7 @@ export const toScene = (result, index) => {
   }
   primary.matchingMoments = buildMatchingMoments(result, primary)
   primary.keyframesMatched = Math.max(primary.keyframesMatched, primary.matchingMoments.length)
-  if (primary.totalKeyframes < primary.keyframesMatched) {
+  if (primary.totalKeyframes > 0 && primary.totalKeyframes < primary.keyframesMatched) {
     primary.totalKeyframes = primary.keyframesMatched
   }
   return primary
@@ -183,6 +183,7 @@ const mapResponse = (body) => ({
   nextCursor: body.next_cursor || null,
   tookMs: body.took_ms ?? 0,
   modelVersion: body.model_version || '',
+  mode: body.mode || 'hybrid',
   degraded: Boolean(body.degraded),
   source: body.source || 'api'
 })
@@ -195,8 +196,6 @@ export const searchScenes = async ({
   limit = 24,
   cursor = null,
   mode = 'hybrid',
-  require: requireConcepts = null,
-  exclude = null,
   explain = false,
   signal
 } = {}) => {
@@ -210,9 +209,7 @@ export const searchScenes = async ({
         limit,
         cursor,
         mode,
-        explain,
-        ...(requireConcepts !== null ? { require: requireConcepts } : {}),
-        ...(exclude !== null ? { exclude } : {})
+        explain
       }),
       signal
     })
@@ -244,22 +241,7 @@ export const searchScenes = async ({
 /**
  * Why a search came back empty, phrased for the person who ran it.
  */
-export const explainEmptyResult = ({
-  query,
-  belowThreshold,
-  unconfirmedConcepts = [],
-  excludedConcepts = []
-} = {}) => {
-  if (unconfirmedConcepts.length > 0) {
-    const concepts = unconfirmedConcepts.map(humanizeConcept).join(', ')
-    return `No keyframe in the corpus is described as containing ${concepts}. Try removing that from the query.`
-  }
-  if (belowThreshold) {
-    return `Nothing in this corpus resembles “${query}”. The footage is dashcam and street video, so subjects outside that return no results rather than the closest unrelated clip.`
-  }
-  if (excludedConcepts.length > 0) {
-    const concepts = excludedConcepts.map(humanizeConcept).join(', ')
-    return `Matches were found, but every one of them was ruled out by the exclusion of ${concepts}. Remove that filter to see them.`
-  }
+export const explainEmptyResult = ({ query, belowThreshold } = {}) => {
+  if (belowThreshold) return `No scenes meet the similarity threshold for “${query}”.`
   return 'No matching scenes found. Try describing the scene differently.'
 }

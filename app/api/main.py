@@ -107,7 +107,7 @@ async def _warm_search() -> None:
                 await asyncio.to_thread(get_siglip_encoder().load)
             except Exception as exc:
                 logger.warning("SigLIP encoder warmup skipped: {}", exc)
-        else:  # hybrid or other modes
+        else:  # SigLIP + Qwen + RRF
             from ml.encoder import get_qwen_encoder, get_siglip_encoder
 
             try:
@@ -119,14 +119,6 @@ async def _warm_search() -> None:
                     await asyncio.to_thread(get_qwen_encoder().encode_texts, ["warmup"])
                 except Exception as exc:
                     logger.debug("Qwen encoder warmup skipped: {}", exc)
-
-        if settings.search.rerank_enabled:
-            from ml.reranker import get_reranker
-
-            try:
-                await asyncio.to_thread(get_reranker().load)
-            except Exception as exc:
-                logger.warning("Reranker warmup skipped: {}", exc)
 
         logger.info("Search warmup complete")
     except asyncio.CancelledError:

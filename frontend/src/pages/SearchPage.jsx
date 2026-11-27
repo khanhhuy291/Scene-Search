@@ -43,7 +43,6 @@ export const SearchPage = () => {
   const [hasSearched, setHasSearched] = useState(false)
   const [heroExpanded, setHeroExpanded] = useState(false)
   const [searchOptions, setSearchOptions] = useState({ mode: "hybrid", limit: 24 })
-  const [overrides, setOverrides] = useState({ require: null, exclude: null })
 
   const activeRequest = useRef(null)
 
@@ -62,6 +61,7 @@ export const SearchPage = () => {
       const limit = options.limit ?? searchOptions.limit
       setSearchOptions({ mode, limit })
 
+      setIsLoadingMore(false)
       setIsSearching(true)
       setError(null)
       setCurrentQuery(trimmed)
@@ -73,10 +73,9 @@ export const SearchPage = () => {
           query: trimmed,
           mode,
           limit,
-          require: options.require ?? null,
-          exclude: options.exclude ?? null,
           signal: controller.signal
         })
+        if (activeRequest.current !== controller) return
         setResult(next)
         setHasSearched(true)
 
@@ -93,12 +92,7 @@ export const SearchPage = () => {
             : `${next.totalVideos} matching videos`
           addToast(`Found ${scope} (${next.totalKeyframes} keyframes)`, "success")
         }
-        if (next.unmatchedTerms.length > 0) {
-          addToast(
-            `Could not enforce: ${next.unmatchedTerms.join(", ")}. Handled by similarity only.`,
-            "info"
-          )
-        }
+
       } catch (caught) {
         if (caught.name === "AbortError") return
         setError(caught.message)
@@ -126,7 +120,6 @@ export const SearchPage = () => {
 
   const handleSearch = (queryText, options = {}) => {
     const trimmed = queryText.trim()
-    setOverrides({ require: null, exclude: null })
     if (trimmed) {
       setSearchParams({ q: trimmed })
     }
@@ -136,15 +129,13 @@ export const SearchPage = () => {
   const handleOptionsChange = (options) => {
     setSearchOptions((prev) => ({ ...prev, ...options }))
     if (!hasSearched || !currentQuery) return
-    runSearch(currentQuery, {
-      ...options,
-      require: overrides.require,
-      exclude: overrides.exclude
-    })
+    runSearch(currentQuery, options)
   }
 
   const handleLoadMore = async () => {
-    if (!result.nextCursor || isLoadingMore) return
+    if (!result.nextCursor || isLoadingMore || isSearching) return
+    const controller = new AbortController()
+    activeRequest.current = controller
     setIsLoadingMore(true)
     try {
       const next = await searchScenes({
@@ -152,35 +143,23 @@ export const SearchPage = () => {
         cursor: result.nextCursor,
         mode: searchOptions.mode,
         limit: searchOptions.limit,
-        require: overrides.require ?? undefined,
-        exclude: overrides.exclude ?? undefined
+        signal: controller.signal
       })
+      if (activeRequest.current !== controller) return
       setResult((previous) => ({
         ...next,
         scenes: [...previous.scenes, ...next.scenes]
       }))
     } catch (caught) {
-      addToast(caught.message, "error")
+      if (caught.name !== "AbortError") addToast(caught.message, "error")
     } finally {
-      setIsLoadingMore(false)
+      if (activeRequest.current === controller) {
+        activeRequest.current = null
+        setIsLoadingMore(false)
+      }
     }
   }
 
-  const handleRemoveConcept = (kind, concept) => {
-    const nextRequire = (overrides.require ?? result.requiredConcepts).filter(
-      (item) => kind !== "require" || item !== concept
-    )
-    const nextExclude = (overrides.exclude ?? result.excludedConcepts).filter(
-      (item) => kind !== "exclude" || item !== concept
-    )
-    setOverrides({ require: nextRequire, exclude: nextExclude })
-    runSearch(currentQuery, {
-      require: nextRequire,
-      exclude: nextExclude,
-      mode: searchOptions.mode,
-      limit: searchOptions.limit
-    })
-  }
 
   const handleExportDraft = () => {
     const items = activeDraft?.items || []
@@ -243,6 +222,7 @@ export const SearchPage = () => {
 
   const searchMeta = {
     query: currentQuery,
+    mode: searchOptions.mode,
     requiredConcepts: result.requiredConcepts,
     excludedConcepts: result.excludedConcepts,
     modelVersion: result.modelVersion
@@ -267,7 +247,7 @@ export const SearchPage = () => {
             </h1>
 
             <p className="text-stone-600 dark:text-stone-400 text-sm max-w-xl mx-auto font-medium">
-              Natural-language retrieval across driving footage. Query visual conditions, actions, and strict negations to curate balanced training slices.
+              Search driving footage with SigLIP, Qwen, or combine both rankings with RRF.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3 pt-1 font-mono text-[11px] font-bold">
@@ -287,6 +267,7 @@ export const SearchPage = () => {
           <SearchBar
             initialQuery={currentQuery}
             onSearch={handleSearch}
+            options={searchOptions}
             onOptionsChange={handleOptionsChange}
             isSearching={isSearching}
             compact={false}
@@ -312,7 +293,7 @@ export const SearchPage = () => {
                 SEMANTIC SCENE <span className="text-[#FF5500]">SEARCH</span>
               </h1>
               <p className="text-stone-600 dark:text-stone-400 text-xs max-w-xl mx-auto font-medium">
-                Natural-language retrieval across driving footage. Query visual conditions, actions, and strict negations to curate balanced training slices.
+                Search driving footage with SigLIP, Qwen, or combine both rankings with RRF.
               </p>
               <button
                 type="button"
@@ -351,6 +332,7 @@ export const SearchPage = () => {
                 <SearchBar
                   initialQuery={currentQuery}
                   onSearch={handleSearch}
+                  options={searchOptions}
                   onOptionsChange={handleOptionsChange}
                   isSearching={isSearching}
                   compact={true}
@@ -375,8 +357,6 @@ export const SearchPage = () => {
                   isSearching={isSearching}
                   isLoadingMore={isLoadingMore}
                   onLoadMore={handleLoadMore}
-                  onRemoveConcept={handleRemoveConcept}
-                  onRunQuery={(q) => handleSearch(q)}
                 />
               )}
             </main>

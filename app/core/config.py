@@ -348,86 +348,21 @@ class DatasetSettings(_BaseSettings):
 
 
 class SearchSettings(_BaseSettings):
-    """Retrieval thresholds, measured against the indexed corpus.
-
-    These are calibration constants, not preferences, which is why they live here
-    with their measurement recorded rather than inline in the engine. Re-measure
-    them when the encoder or the corpus changes: a floor calibrated on dashcam
-    footage says nothing about a corpus of kitchen footage.
-    """
+    """Default vector retrieval mode and fallback keyframe timestamp cadence."""
 
     model_config = SettingsConfigDict(
         env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="SEARCH_"
     )
-
-    # Minimum SigLIP cosine for a keyframe to be a plausible answer at all.
-    #
-    # Without a floor, nearest-neighbour search always returns its k nearest
-    # neighbours, so a query for something the corpus does not contain returns the
-    # least-unrelated footage with no signal that it is unrelated -- "spiderman"
-    # answered with several hundred dashcam clips.
-    #
-    # 0.09 is where the two populations separate on this index, measured over 22
-    # in-domain and 14 out-of-domain queries (scripts/calibrate_floor.py, recorded
-    # in SearchSettings / SRS NFR-PERF-06): every in-domain query peaked at 0.096 or above, every
-    # out-of-domain one at 0.088 or below. The value sits in that gap, nearer the
-    # bottom of it, because a thin result beats wrongly reporting an empty corpus.
-    #
-    # Note this is an *absolute* cutoff on purpose. Scoring each query against a
-    # random background sample was tried first and is actively misleading here:
-    # out-of-domain queries score *further* above their background than in-domain
-    # ones do, because nothing in the corpus resembles them, so their similarity
-    # distribution is narrow and any weak top hit looks like an outlier.
-    visual_floor: float = Field(default=0.09, ge=0.0, le=1.0)
-    qwen_visual_floor: float = Field(default=0.02, ge=0.0, le=1.0)
-    caption_floor: float = Field(default=0.0, ge=0.0, le=1.0)
-
-    # Whether a concept named in the query must be positively confirmed by the
-    # caption, rather than merely not contradicted by it.
-    strict_concepts: bool = False
-
-    # Primary search retrieval mode: "hybrid", "qwen", or "siglip".
-    mode: Literal["hybrid", "siglip", "qwen", "visual", "caption"] = Field(
+    # hybrid means SigLIP + Qwen with equal-weight RRF (k=60).
+    mode: Literal["siglip", "qwen", "hybrid"] = Field(
         default="hybrid",
         validation_alias=AliasChoices("SEARCH_MODE", "SEARCH_DEFAULT_MODE"),
     )
-    visual_vector: str = "siglip"
-    caption_vector: str = ""
-
-    # Cadence used to recover a timestamp when the payload has a frame index
-    # (``frame_id`` / ``frame_00034.jpg``) but no ``timestamp_sec``. The live
-    # Viettech collection is sampled at the MOT annotation rate.
     keyframe_fps: float = Field(default=5.0, gt=0, le=60)
-
-    # Tri-Tier Adaptive Agentic Search controls
-    agentic_enabled: bool = False
-    hyde_enabled: bool = True
-    domain_guardrail_enabled: bool = True
-    max_reflection_loops: int = Field(default=1, ge=0, le=3)
-
-    # Cross-encoder reranking controls
-    rerank_enabled: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("SEARCH_RERANK_ENABLED", "RERANK_ENABLED"),
-    )
-    rerank_top_k: int = Field(
-        default=30,
-        ge=1,
-        le=200,
-        validation_alias=AliasChoices("SEARCH_RERANK_TOP_K", "RERANK_TOP_K"),
-    )
-    reranker_model_name: str = Field(
-        default="Qwen/Qwen3-VL-Reranker-2B",
-        validation_alias=AliasChoices("ML_RERANKER_NAME", "RERANKER_MODEL_NAME"),
-    )
-    reranker_device: Literal["auto", "cuda", "cpu", "mps"] = Field(
-        default="auto",
-        validation_alias=AliasChoices("RERANKER_DEVICE", "ML_RERANKER_DEVICE"),
-    )
 
 
 class LLMSettings(_BaseSettings):
-    """OpenAI-compatible LLM service settings for Agentic Search (HyDE & Routing)."""
+    """OpenAI-compatible LLM settings for chat and caption enrichment."""
 
     model_config = SettingsConfigDict(
         env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="LLM_"
