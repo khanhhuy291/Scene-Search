@@ -79,41 +79,18 @@ async def _warm_search() -> None:
 
     try:
         settings = get_settings()
-        mode = settings.search.mode.lower()
-        if mode == "qwen":
-            from ml.encoder import get_qwen_encoder
+        from ml.encoder import get_qwen_encoder, get_siglip_encoder
+        from search.engine import MODE_VECTORS
 
+        towers = {
+            "siglip" if name == "siglip" else "qwen" for name in MODE_VECTORS[settings.search.mode]
+        }
+        for tower in sorted(towers):
+            encoder = get_siglip_encoder() if tower == "siglip" else get_qwen_encoder()
             try:
-                await asyncio.to_thread(get_qwen_encoder().encode_texts, ["warmup"])
+                await asyncio.to_thread(encoder.encode_texts, ["warmup"])
             except Exception as exc:
-                logger.warning("Qwen encoder warmup skipped: {}", exc)
-        elif mode == "siglip":
-            from ml.encoder import get_siglip_encoder
-
-            try:
-                await asyncio.to_thread(get_siglip_encoder().load)
-            except Exception as exc:
-                logger.warning("SigLIP encoder warmup skipped: {}", exc)
-        else:  # hybrid or other modes
-            from ml.encoder import get_qwen_encoder, get_siglip_encoder
-
-            try:
-                await asyncio.to_thread(get_siglip_encoder().load)
-            except Exception as exc:
-                logger.warning("SigLIP encoder warmup skipped: {}", exc)
-            if settings.ml.qwen_embedding_url or "qwen" in settings.ml.encoder_name.lower():
-                try:
-                    await asyncio.to_thread(get_qwen_encoder().encode_texts, ["warmup"])
-                except Exception as exc:
-                    logger.debug("Qwen encoder warmup skipped: {}", exc)
-
-        if settings.search.rerank_enabled:
-            from ml.reranker import get_reranker
-
-            try:
-                await asyncio.to_thread(get_reranker().load)
-            except Exception as exc:
-                logger.warning("Reranker warmup skipped: {}", exc)
+                logger.warning("{} encoder warmup skipped: {}", tower, exc)
 
         logger.info("Search warmup complete")
     except asyncio.CancelledError:

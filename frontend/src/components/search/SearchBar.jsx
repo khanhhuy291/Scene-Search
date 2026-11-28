@@ -3,22 +3,21 @@ import { useLanguage } from "../../context/LanguageContext"
 import { AnimatePresence, motion } from "framer-motion"
 import { Search, Sliders, Sparkles } from "lucide-react"
 
-const MODES = [
-  { id: "hybrid", label: "HYBRID", hint: "Fuses Qwen 2048d semantic + SigLIP 768d visual vectors" },
-  { id: "qwen", label: "QWEN-VL", hint: "Qwen3-VL 2048-dim multimodal embeddings" },
-  { id: "siglip", label: "SIGLIP", hint: "SigLIP 768-dim vision-language embeddings" },
-  { id: "visual", label: "VISUAL ONLY", hint: "Pure visual similarity retrieval" },
-  { id: "caption", label: "CAPTION ONLY", hint: "Lexical & semantic text retrieval" }
+export const SEARCH_MODES = [
+  { id: "siglip", label: "SigLIP", hint: "Compare the query with SigLIP visual embeddings" },
+  { id: "qwen", label: "Qwen", hint: "Compare the query with Qwen visual embeddings" },
+  { id: "caption", label: "Caption embedding", hint: "Compare the query with Qwen text embeddings of ingestion captions" },
+  { id: "siglip_qwen_rrf", label: "RRF SigLIP + Qwen", hint: "Combine SigLIP and Qwen rankings with RRF" },
+  { id: "qwen_caption_rrf", label: "RRF Qwen + Caption", hint: "Combine Qwen visual and caption embedding rankings with RRF" }
 ]
 
 const PAGE_SIZES = [12, 24, 48, 96]
 
-export const SearchBar = ({ initialQuery = "", onSearch, onOptionsChange, isSearching, compact = false }) => {
+export const SearchBar = ({ initialQuery = "", onSearch, onOptionsChange, isSearching, options = { mode: "siglip_qwen_rrf", limit: 24 }, compact = false }) => {
   const { t, isVietnamese } = useLanguage()
   const [query, setQuery] = useState(initialQuery)
-  const [mode, setMode] = useState("hybrid")
-  const [limit, setLimit] = useState(24)
-  const [showFilters, setShowFilters] = useState(false)
+  const { mode, limit } = options
+  const [showFilters, setShowFilters] = useState(true)
 
   React.useEffect(() => {
     if (initialQuery !== undefined) {
@@ -28,14 +27,14 @@ export const SearchBar = ({ initialQuery = "", onSearch, onOptionsChange, isSear
 
   const sampleQueries = isVietnamese
     ? [
-        "đường mưa không có người đi bộ",
+        "đường mưa có xe ô tô",
         "lái xe qua hầm",
         "đường tuyết ban ngày",
         "xe màu vàng và đèn đỏ",
         "cao tốc sương mù lúc hoàng hôn"
       ]
     : [
-        "rainy street without pedestrians",
+        "rainy street with cars",
         "driving through a tunnel",
         "snowy road in daylight",
         "yellow vehicle and red light",
@@ -119,15 +118,15 @@ export const SearchBar = ({ initialQuery = "", onSearch, onOptionsChange, isSear
                   {t("search.signals")}
                 </span>
                 <div className="flex flex-wrap gap-2">
-                  {MODES.map((option) => (
+                  {SEARCH_MODES.map((option) => (
                     <button
                       key={option.id}
                       type="button"
                       onClick={() => {
-                        setMode(option.id)
                         onOptionsChange?.({ mode: option.id, limit })
                       }}
                       title={option.hint}
+                      aria-pressed={mode === option.id}
                       className={`px-3 py-1 border-2 text-[10px] font-mono font-black uppercase transition-all cursor-pointer ${
                         mode === option.id
                           ? "bg-black text-white border-black shadow-[2px_2px_0px_0px_#FF5500]"
@@ -150,7 +149,6 @@ export const SearchBar = ({ initialQuery = "", onSearch, onOptionsChange, isSear
                       key={size}
                       type="button"
                       onClick={() => {
-                        setLimit(size)
                         onOptionsChange?.({ mode, limit: size })
                       }}
                       className={`min-w-10 px-2.5 py-1 border-2 text-[10px] font-mono font-black transition-all cursor-pointer ${

@@ -270,8 +270,6 @@ class SceneSearchQAAgent:
                 query=current_query,
                 limit=request.limit,
                 mode="qwen",
-                strict=False,
-                rerank=False,
             )
 
             if outcome.matches and len(outcome.matches) > 0:

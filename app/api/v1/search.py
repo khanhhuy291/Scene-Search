@@ -118,6 +118,7 @@ def _to_result(match: VideoMatch) -> SearchResult:
 def _to_response(request: SearchRequest, outcome: SearchOutcome) -> SearchResponse:
     return SearchResponse(
         query=request.query,
+        mode=request.mode or get_settings().search.mode,
         filters_applied=request.filters,
         results=[_to_result(match) for match in outcome.matches],
         total=outcome.total_videos,
@@ -134,29 +135,15 @@ def _to_response(request: SearchRequest, outcome: SearchOutcome) -> SearchRespon
         unconfirmed_concepts=list(outcome.unconfirmed_concepts),
         next_cursor=outcome.next_cursor,
         took_ms=outcome.took_ms,
-        model_version=get_settings().ml.model_version,
+        model_version=outcome.model_version or get_settings().ml.model_version,
     )
 
 
 @router.post("", response_model=SearchResponse, summary="Search scenes by description")
 async def search_scenes(request: SearchRequest) -> SearchResponse:
-    """Find keyframes matching a natural-language description.
+    """Search published chunks using only the explicitly selected vector towers."""
 
-    Returns one result per video -- the best keyframe that satisfies the query --
-    so twenty results mean twenty different clips. When the query names a concept
-    the search knows, the result set is complete rather than a top-k sample, and
-    ``exhaustive`` says which of the two happened.
-
-    An empty list is a real answer here, not a failure: a subject this corpus does
-    not contain returns nothing, with ``below_threshold`` set, rather than the
-    nearest unrelated footage. Check that field before reporting "no results" so
-    the reason reaches the user.
-    """
-
-    search_settings = get_settings().search
-    effective_mode = request.mode
-    if effective_mode is None or (effective_mode == "hybrid" and search_settings.mode != "hybrid"):
-        effective_mode = search_settings.mode
+    effective_mode = request.mode or get_settings().search.mode
 
     engine = get_search_engine()
     try:
@@ -170,10 +157,6 @@ async def search_scenes(request: SearchRequest) -> SearchResponse:
             video_ids=request.filters.video_ids,
             min_score=request.min_score,
             explain=request.explain,
-            require=request.require,
-            exclude=request.exclude,
-            agentic=request.agentic,
-            rerank=request.rerank,
         )
     except CursorError as exc:
         # A stale or foreign cursor is a bad request. Returning a 500 here would

@@ -92,8 +92,8 @@ export const SceneCard = ({ scene, searchMeta = null }) => {
   const activeSelected = activeMoment ? isSelected(activeMoment.id) : false
 
   const matchedKf = scene.keyframesMatched || moments.length || 1
-  const totalKf = scene.totalKeyframes || Math.max(matchedKf, 8)
-  const coveragePct = Math.min(100, Math.round((matchedKf / totalKf) * 100))
+  const totalKf = scene.totalKeyframes || 0
+  const coveragePct = totalKf > 0 ? Math.min(100, Math.round((matchedKf / totalKf) * 100)) : null
 
   useEffect(() => {
     setThumbFailed(false)
@@ -275,14 +275,14 @@ export const SceneCard = ({ scene, searchMeta = null }) => {
           <div className="space-y-2">
             {/* Matching Keyframe Coverage Meter */}
             <div className="flex items-center gap-2 font-mono text-[10px] text-stone-500 dark:text-stone-400">
-              <span className="shrink-0">{matchedKf}/{totalKf} frames</span>
-              <div className="flex-1 h-1.5 bg-stone-200 dark:bg-stone-800 rounded-full overflow-hidden">
+              <span className="shrink-0">{totalKf ? `${matchedKf}/${totalKf} moments` : `${matchedKf} candidate moments`}</span>
+              {totalKf > 0 && <><div className="flex-1 h-1.5 bg-stone-200 dark:bg-stone-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-[#FF5500]"
                   style={{ width: `${coveragePct}%` }}
                 />
               </div>
-              <span className="shrink-0 font-bold text-stone-700 dark:text-stone-300">{coveragePct}%</span>
+              <span className="shrink-0 font-bold text-stone-700 dark:text-stone-300">{coveragePct}%</span></>}
             </div>
 
             {/* Caption */}
@@ -358,7 +358,7 @@ export const SceneCard = ({ scene, searchMeta = null }) => {
                 </span>
                 <span className="text-stone-400 text-xs">•</span>
                 <span className="text-stone-300 text-[11px] font-mono truncate">
-                  frame {activeMoment.frameNo ?? "—"} · {activeMoment.timestamp} · {matchedKf}/{totalKf} frames matched
+                  frame {activeMoment.frameNo ?? "—"} · {activeMoment.timestamp} · {matchedKf} candidate moments
                 </span>
               </div>
 

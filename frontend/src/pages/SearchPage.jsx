@@ -42,8 +42,7 @@ export const SearchPage = () => {
   const [error, setError] = useState(null)
   const [hasSearched, setHasSearched] = useState(false)
   const [heroExpanded, setHeroExpanded] = useState(false)
-  const [searchOptions, setSearchOptions] = useState({ mode: "hybrid", limit: 24 })
-  const [overrides, setOverrides] = useState({ require: null, exclude: null })
+  const [searchOptions, setSearchOptions] = useState({ mode: "siglip_qwen_rrf", limit: 24 })
 
   const activeRequest = useRef(null)
 
@@ -74,8 +73,6 @@ export const SearchPage = () => {
           query: trimmed,
           mode,
           limit,
-          require: options.require ?? null,
-          exclude: options.exclude ?? null,
           signal: controller.signal
         })
         if (activeRequest.current !== controller) return
@@ -95,12 +92,7 @@ export const SearchPage = () => {
             : `${next.totalVideos} matching videos`
           addToast(`Found ${scope} (${next.totalKeyframes} keyframes)`, "success")
         }
-        if (next.unmatchedTerms.length > 0) {
-          addToast(
-            `Could not enforce: ${next.unmatchedTerms.join(", ")}. Handled by similarity only.`,
-            "info"
-          )
-        }
+
       } catch (caught) {
         if (caught.name === "AbortError" || activeRequest.current !== controller) return
         setError(caught.message)
@@ -128,7 +120,6 @@ export const SearchPage = () => {
 
   const handleSearch = (queryText, options = {}) => {
     const trimmed = queryText.trim()
-    setOverrides({ require: null, exclude: null })
     if (trimmed) {
       setSearchParams({ q: trimmed })
     }
@@ -138,11 +129,7 @@ export const SearchPage = () => {
   const handleOptionsChange = (options) => {
     setSearchOptions((prev) => ({ ...prev, ...options }))
     if (!hasSearched || !currentQuery) return
-    runSearch(currentQuery, {
-      ...options,
-      require: overrides.require,
-      exclude: overrides.exclude
-    })
+    runSearch(currentQuery, options)
   }
 
   const handleLoadMore = async () => {
@@ -156,8 +143,6 @@ export const SearchPage = () => {
         cursor: result.nextCursor,
         mode: searchOptions.mode,
         limit: searchOptions.limit,
-        require: overrides.require ?? undefined,
-        exclude: overrides.exclude ?? undefined,
         signal: controller.signal
       })
       if (activeRequest.current !== controller) return
@@ -174,22 +159,6 @@ export const SearchPage = () => {
         setIsLoadingMore(false)
       }
     }
-  }
-
-  const handleRemoveConcept = (kind, concept) => {
-    const nextRequire = (overrides.require ?? result.requiredConcepts).filter(
-      (item) => kind !== "require" || item !== concept
-    )
-    const nextExclude = (overrides.exclude ?? result.excludedConcepts).filter(
-      (item) => kind !== "exclude" || item !== concept
-    )
-    setOverrides({ require: nextRequire, exclude: nextExclude })
-    runSearch(currentQuery, {
-      require: nextRequire,
-      exclude: nextExclude,
-      mode: searchOptions.mode,
-      limit: searchOptions.limit
-    })
   }
 
   const handleExportDraft = () => {
@@ -253,6 +222,7 @@ export const SearchPage = () => {
 
   const searchMeta = {
     query: currentQuery,
+    mode: result.mode || searchOptions.mode,
     requiredConcepts: result.requiredConcepts,
     excludedConcepts: result.excludedConcepts,
     modelVersion: result.modelVersion
@@ -277,12 +247,12 @@ export const SearchPage = () => {
             </h1>
 
             <p className="text-stone-600 dark:text-stone-400 text-sm max-w-xl mx-auto font-medium">
-              Natural-language retrieval across driving footage. Query visual conditions, actions, and strict negations to curate balanced training slices.
+              Search scene chunks using SigLIP, Qwen, caption embeddings, or two combined rankings with RRF.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3 pt-1 font-mono text-[11px] font-bold">
               <span className="px-2.5 py-1 bg-[#F7F4EE] dark:bg-stone-800 border border-black text-black dark:text-white flex items-center gap-1.5">
-                <Database className="w-3 h-3 text-[#FF5500]" /> ~30,000 VECTORS
+                <Database className="w-3 h-3 text-[#FF5500]" /> SCENE CHUNK SEARCH
               </span>
               <span className="px-2.5 py-1 bg-[#F7F4EE] dark:bg-stone-800 border border-black text-black dark:text-white flex items-center gap-1.5">
                 <Layers className="w-3 h-3 text-[#00D084]" /> ZERO-SHOT MULTIMODAL
@@ -297,6 +267,7 @@ export const SearchPage = () => {
           <SearchBar
             initialQuery={currentQuery}
             onSearch={handleSearch}
+            options={searchOptions}
             onOptionsChange={handleOptionsChange}
             isSearching={isSearching}
             compact={false}
@@ -308,7 +279,7 @@ export const SearchPage = () => {
               {t("search.system_ready", {}, "[SYSTEM READY // AWAITING QUERY]")}
             </p>
             <p className="text-xs text-stone-600 dark:text-stone-400 font-sans leading-relaxed">
-              {t("search.system_ready_desc", {}, "Enter a scene description above or click one of the suggested query chips to start neural search across ~30,000 keyframes.")}
+              {t("search.system_ready_desc", {}, "Choose a search mode and describe a scene to search the published footage.")}
             </p>
           </div>
         </div>
@@ -322,7 +293,7 @@ export const SearchPage = () => {
                 SEMANTIC SCENE <span className="text-[#FF5500]">SEARCH</span>
               </h1>
               <p className="text-stone-600 dark:text-stone-400 text-xs max-w-xl mx-auto font-medium">
-                Natural-language retrieval across driving footage. Query visual conditions, actions, and strict negations to curate balanced training slices.
+                Search scene chunks using SigLIP, Qwen, caption embeddings, or two combined rankings with RRF.
               </p>
               <button
                 type="button"
@@ -361,6 +332,7 @@ export const SearchPage = () => {
                 <SearchBar
                   initialQuery={currentQuery}
                   onSearch={handleSearch}
+                  options={searchOptions}
                   onOptionsChange={handleOptionsChange}
                   isSearching={isSearching}
                   compact={true}
@@ -385,8 +357,6 @@ export const SearchPage = () => {
                   isSearching={isSearching}
                   isLoadingMore={isLoadingMore}
                   onLoadMore={handleLoadMore}
-                  onRemoveConcept={handleRemoveConcept}
-                  onRunQuery={(q) => handleSearch(q)}
                 />
               )}
             </main>

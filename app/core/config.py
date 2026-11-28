@@ -8,6 +8,9 @@ from typing import Annotated, Literal
 from pydantic import AliasChoices, Field, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+# Resolve one env file consistently from source, regardless of command CWD.
+APP_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+
 _INSECURE_DEFAULT_AUTH_SECRET = (
     "scenesearch-insecure-jwt-secret-key-change-in-production-min32chars"
 )
@@ -15,7 +18,7 @@ _INSECURE_DEFAULT_AUTH_SECRET = (
 
 class _BaseSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=APP_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -26,7 +29,7 @@ class DatabaseSettings(_BaseSettings):
     """PostgreSQL and SQLAlchemy connection-pool settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=APP_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         env_prefix="POSTGRES_",
@@ -66,7 +69,7 @@ class RedisSettings(_BaseSettings):
     """Redis connection and pool settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="REDIS_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="REDIS_"
     )
 
     host: str = "localhost"
@@ -84,7 +87,7 @@ class CelerySettings(_BaseSettings):
     """Celery broker, result backend, and worker safety limits."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=APP_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         env_prefix="CELERY_",
@@ -116,7 +119,7 @@ class MinIOSettings(_BaseSettings):
     """S3-compatible MinIO object-store settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="MINIO_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="MINIO_"
     )
 
     endpoint: str = "localhost:9000"
@@ -188,7 +191,7 @@ class QdrantSettings(_BaseSettings):
     """Qdrant connection and scene-vector settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="QDRANT_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="QDRANT_"
     )
 
     host: str = "localhost"
@@ -223,7 +226,7 @@ class MLSettings(_BaseSettings):
     """Embedding-model and inference-device settings (ADR-0001)."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=APP_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         env_prefix="ML_",
@@ -300,7 +303,7 @@ class VideoSettings(_BaseSettings):
     """Decoding, sampling, and preview-encoding settings (ADR-0004)."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="VIDEO_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="VIDEO_"
     )
 
     # Frames per second to sample for embedding. The selected corpus contract
@@ -366,7 +369,7 @@ class DatasetSettings(_BaseSettings):
     """Local corpus layout selected by ADR-0005."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="DATASET_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="DATASET_"
     )
 
     name: str = "driving-video-object-tracking"
@@ -384,82 +387,22 @@ class DatasetSettings(_BaseSettings):
 
 
 class SearchSettings(_BaseSettings):
-    """Retrieval thresholds, measured against the indexed corpus.
-
-    These are calibration constants, not preferences, which is why they live here
-    with their measurement recorded rather than inline in the engine. Re-measure
-    them when the encoder or the corpus changes: a floor calibrated on dashcam
-    footage says nothing about a corpus of kitchen footage.
-    """
+    """Five explicit vector retrieval modes; no query rewriting or inferred rules."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="SEARCH_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="SEARCH_"
     )
-
-    # Minimum SigLIP cosine for a keyframe to be a plausible answer at all.
-    #
-    # Without a floor, nearest-neighbour search always returns its k nearest
-    # neighbours, so a query for something the corpus does not contain returns the
-    # least-unrelated footage with no signal that it is unrelated -- "spiderman"
-    # answered with several hundred dashcam clips.
-    #
-    # 0.09 is where the two populations separate on this index, measured over 22
-    # in-domain and 14 out-of-domain queries (scripts/calibrate_floor.py, recorded
-    # in SearchSettings / SRS NFR-PERF-06): every in-domain query peaked at 0.096 or above, every
-    # out-of-domain one at 0.088 or below. The value sits in that gap, nearer the
-    # bottom of it, because a thin result beats wrongly reporting an empty corpus.
-    #
-    # Note this is an *absolute* cutoff on purpose. Scoring each query against a
-    # random background sample was tried first and is actively misleading here:
-    # out-of-domain queries score *further* above their background than in-domain
-    # ones do, because nothing in the corpus resembles them, so their similarity
-    # distribution is narrow and any weak top hit looks like an outlier.
-    visual_floor: float = Field(default=0.09, ge=0.0, le=1.0)
-    qwen_visual_floor: float = Field(default=0.02, ge=0.0, le=1.0)
-    caption_floor: float = Field(default=0.0, ge=0.0, le=1.0)
-
-    # Whether a concept named in the query must be positively confirmed by the
-    # caption, rather than merely not contradicted by it.
-    strict_concepts: bool = False
-
-    # Primary search retrieval mode: "hybrid", "qwen", or "siglip".
-    mode: Literal["hybrid", "siglip", "qwen", "visual", "caption"] = Field(
-        default="hybrid",
+    mode: Literal["siglip", "qwen", "caption", "siglip_qwen_rrf", "qwen_caption_rrf"] = Field(
+        default="siglip_qwen_rrf",
         validation_alias=AliasChoices("SEARCH_MODE", "SEARCH_DEFAULT_MODE"),
-    )
-
-    # Tri-Tier Adaptive Agentic Search controls
-    agentic_enabled: bool = False
-    hyde_enabled: bool = True
-    domain_guardrail_enabled: bool = True
-    max_reflection_loops: int = Field(default=1, ge=0, le=3)
-
-    # Cross-encoder reranking controls
-    rerank_enabled: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("SEARCH_RERANK_ENABLED", "RERANK_ENABLED"),
-    )
-    rerank_top_k: int = Field(
-        default=30,
-        ge=1,
-        le=200,
-        validation_alias=AliasChoices("SEARCH_RERANK_TOP_K", "RERANK_TOP_K"),
-    )
-    reranker_model_name: str = Field(
-        default="Qwen/Qwen3-VL-Reranker-2B",
-        validation_alias=AliasChoices("ML_RERANKER_NAME", "RERANKER_MODEL_NAME"),
-    )
-    reranker_device: Literal["auto", "cuda", "cpu", "mps"] = Field(
-        default="auto",
-        validation_alias=AliasChoices("RERANKER_DEVICE", "ML_RERANKER_DEVICE"),
     )
 
 
 class LLMSettings(_BaseSettings):
-    """OpenAI-compatible LLM service settings for Agentic Search (HyDE & Routing)."""
+    """OpenAI-compatible LLM settings for ingestion captions and chat."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="LLM_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="LLM_"
     )
 
     api_key: SecretStr | None = Field(
@@ -482,7 +425,7 @@ class AppSettings(_BaseSettings):
     """HTTP application, logging, and model settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="APP_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="APP_"
     )
 
     name: str = "SceneSearch-P-081"
@@ -515,7 +458,7 @@ class AuthSettings(_BaseSettings):
     """JWT authentication and authorization settings loaded from environment."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", env_prefix="AUTH_"
+        env_file=APP_ENV_FILE, env_file_encoding="utf-8", extra="ignore", env_prefix="AUTH_"
     )
 
     secret_key: SecretStr = Field(

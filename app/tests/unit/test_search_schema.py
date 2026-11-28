@@ -87,7 +87,7 @@ def test_defaults_are_the_ones_the_ui_relies_on() -> None:
     assert request.granularity is None
     assert request.limit == 20
     assert request.cursor is None
-    assert request.rerank is None
+    assert request.mode is None
     assert request.explain is False
     assert request.filters.has_constraints is False
 
@@ -131,9 +131,10 @@ def test_fused_score_is_not_bounded_like_a_similarity() -> None:
     assert _result(score=2.5).score == 2.5
 
 
-def test_negative_score_is_still_rejected() -> None:
+def test_negative_cosine_score_is_preserved() -> None:
+    assert _result(score=-0.1).score == -0.1
     with pytest.raises(ValidationError):
-        _result(score=-0.1)
+        _result(score=-1.1)
 
 
 def test_end_before_start_is_rejected() -> None:

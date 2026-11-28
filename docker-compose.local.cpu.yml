@@ -1,6 +1,0 @@
-services:
-  embedding-api:
-    deploy: !reset null
-    environment:
-      ML_DEVICE: cpu
-      ML_DTYPE: float32

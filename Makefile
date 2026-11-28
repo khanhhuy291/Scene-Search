@@ -5,30 +5,26 @@
 	eval eval-dry eval-check
 
 COMPOSE := docker compose --env-file app/.env -f docker-compose.yml
-LOCAL_COMPOSE := docker compose --env-file app/.env -f docker-compose.local.yml
-ifeq ($(CPU),1)
-LOCAL_COMPOSE += -f docker-compose.local.cpu.yml
-endif
-PYTHON := app/.venv/bin/python
+PYTHON ?= app/.venv/bin/python
 
 .PHONY: local-build local-up local-down local-logs local-ps local-admin
 local-build:
-	$(LOCAL_COMPOSE) build
+	$(COMPOSE) build
 
 local-up:
-	$(LOCAL_COMPOSE) up -d --build
+	$(COMPOSE) up -d --build
 
 local-down:
-	$(LOCAL_COMPOSE) down
+	$(COMPOSE) down
 
 local-logs:
-	$(LOCAL_COMPOSE) logs -f --tail=100
+	$(COMPOSE) logs -f --tail=100
 
 local-ps:
-	$(LOCAL_COMPOSE) ps
+	$(COMPOSE) ps
 
 local-admin:
-	$(LOCAL_COMPOSE) exec api python -m services.bootstrap_admin
+	$(COMPOSE) exec api python -m services.bootstrap_admin
 
 install:
 	$(MAKE) -C app install
@@ -110,52 +106,13 @@ deploy-compose:
 deploy-vm:
 	$(COMPOSE) up -d --build
 
-# Shared-host stack: production UI + API on port 8088.
-docker-deploy:
-	DEPLOY_PORT="$(or $(DEPLOY_PORT),8088)" \
-	DEPLOY_PUBLIC_ORIGIN="$(or $(DEPLOY_PUBLIC_ORIGIN),http://103.130.211.150:8088)" \
-	bash scripts/deploy-shared.sh
+# All deployment aliases use the same source-build stack.
+docker-deploy deploy deploy-gcp deploy-full deploy-api deploy-frontend deploy-local deploy-only:
+	$(COMPOSE) up -d --build
 
-# Google Cloud Run 1-Service Multi-Container Deployment (1 URL duy nhất: Frontend + API + AI + Worker)
-deploy:
-	bash scripts/deploy-multicontainer.sh
-
-deploy-gcp:
-	bash scripts/deploy-multicontainer.sh
-
-deploy-cloudrun:
-	bash scripts/deploy-multicontainer.sh
-
-deploy-multicontainer:
-	bash scripts/deploy-multicontainer.sh
-
-deploy-run-compose:
-	bash scripts/deploy-multicontainer.sh
-
-deploy-only:
-	bash scripts/deploy-multicontainer.sh --no-build
-
-deploy-full:
-	bash scripts/deploy-gcp.sh --full
-
-deploy-all:
-	bash scripts/deploy-gcp.sh --full
-
-# Deploy full stack with Cloud Run GPU (NVIDIA Tesla T4)
-deploy-gpu:
-	bash scripts/deploy-gcp.sh --full --gpu nvidia-tesla-t4
-
-deploy-api:
-	bash scripts/deploy-gcp.sh --api-only
-
-deploy-frontend:
-	bash scripts/deploy-gcp.sh --frontend-only
-
-deploy-local:
-	bash scripts/deploy-gcp.sh --local
-
-deploy-only:
-	bash scripts/deploy-gcp.sh --deploy-only
+config-check:
+	$(COMPOSE) config --quiet
+	PYTHONPATH=app $(PYTHON) -c 'from core.config import get_settings; get_settings(); print("Settings OK")'
 
 # Retrieval evaluation. See app/eval/README.md for what each band can and cannot
 # be scored against.

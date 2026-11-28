@@ -291,26 +291,11 @@ def _is_control(result: CaseResult, suite: Sequence[QueryCase]) -> bool:
 # FR-EVAL-04's list, mapped onto what this system actually has. The entries that
 # do not exist are carried so the report can say why rather than omitting a row.
 ABLATIONS: tuple[tuple[str, dict[str, Any] | None, str], ...] = (
-    ("baseline", {}, "hybrid retrieval as shipped"),
-    ("visual only", {"mode": "visual"}, "the SigLIP tower alone, no caption evidence"),
-    ("caption only", {"mode": "caption"}, "caption signals alone, no image similarity"),
-    (
-        "no strict concepts",
-        {"strict": False},
-        "a named concept becomes a preference rather than a hard filter",
-    ),
-    (
-        "no similarity floor",
-        {"min_score": 0.0},
-        "only meaningful together with SEARCH_VISUAL_FLOOR=0 in the environment",
-    ),
-    ("prompt expansion", None, "not applicable — no query expansion exists"),
-    ("rerank", None, "not applicable — no reranker exists"),
-    (
-        "frame vs segment",
-        None,
-        "not applicable — the attached index stores keyframes only, no segments",
-    ),
+    ("siglip", {"mode": "siglip"}, "SigLIP chunk vectors"),
+    ("qwen", {"mode": "qwen"}, "Qwen visual chunk vectors"),
+    ("caption", {"mode": "caption"}, "Qwen embeddings of ingestion captions"),
+    ("siglip_qwen_rrf", {"mode": "siglip_qwen_rrf"}, "Equal-weight SigLIP + Qwen RRF"),
+    ("qwen_caption_rrf", {"mode": "qwen_caption_rrf"}, "Equal-weight Qwen + caption RRF"),
 )
 
 

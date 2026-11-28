@@ -2,14 +2,14 @@
 
 > **Chạy Docker local trên Linux/NVIDIA:** xem [LOCAL_DOCKER.md](docs/LOCAL_DOCKER.md).
 > Dùng `make local-up`, `make local-admin`, mở http://localhost:5173.
-> Stack này dùng `docker-compose.local.yml` và dữ liệu local riêng.
+> Chỉ dùng `docker-compose.yml`, project mặc định `scenesearch-local`, giữ nguyên các named volume hiện có.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.14-blue.svg)](app/)
 [![React](https://img.shields.io/badge/react-19.0-61dafb.svg)](frontend/)
 [![Qdrant](https://img.shields.io/badge/vector_db-Qdrant-red.svg)](https://qdrant.tech/)
 [![GCP Cloud Run](https://img.shields.io/badge/deploy-GCP%20Cloud%20Run-4285F4.svg)](https://c3-app-081.vinai.io.vn/)
-[![Tests](https://img.shields.io/badge/unit_tests-421%2F421%20passing%20(100%25)-brightgreen.svg)](app/tests/)
+[Search tests and validation](docs/LOCAL_DOCKER.md#kiểm-tra-bản-cập-nhật-2026-11-28)
 
 > 🌐 **Official Domain (Live URL):** [https://c3-app-081.vinai.io.vn/](https://c3-app-081.vinai.io.vn/) *(Cloud Run: [https://scenesearch-604840409374.asia-southeast1.run.app](https://scenesearch-604840409374.asia-southeast1.run.app))*  
 > 🎥 **Video Demo (5 Mins):** [Link Video Demo (Google Drive)](https://drive.google.com/file/d/1gXYMA_KUQKXAMoWqEM4tfmlxS2FZBpq8/view?usp=sharing)  
@@ -36,12 +36,33 @@ Trong quá trình phát triển hệ thống xe tự hành (Autonomous Vehicles)
 **SceneSearch (P-081)** là nền tảng tìm kiếm ngữ nghĩa đa phương thức và trích xuất lát cắt dữ liệu (Dataset Slicing Engine) chuyên dụng cho xe tự hành:
 
 - 🔍 **Tìm kiếm đa ngôn ngữ tự nhiên (Natural Language Search):** Hỗ trợ câu truy vấn tiếng Việt và tiếng Anh (ví dụ: *"xe cứu hỏa bật đèn chớp ban đêm"*, *"ford minivan dừng đèn đỏ trời mưa"*), trích xuất chính xác đến từng mốc thời gian (0.5s timestamp).
-- 🧠 **Tri-Tier Agentic Search & Visual-HyDE:** Tích hợp bộ phân loại OOD Guardrail chặn câu truy vấn rác, cơ chế Visual-HyDE mở rộng mô tả góc nhìn kính lái và vòng lặp phản tư (Reflection loop) tự động nới lỏng điều kiện khi gặp zero-hit.
+- 🧠 **Năm chế độ vector search:** SigLIP, Qwen, Caption embedding, RRF SigLIP + Qwen, RRF Qwen + Caption. Query được embedding nguyên văn; không có HyDE, query rules, lexical caption search hoặc reranker.
 - 🎭 **Tự động làm mờ khuôn mặt & biển số xe (Automated Anonymization - ADR-0003):** Quy trình 2-bucket bảo mật tuyệt đối, lưu video gốc trong `scenesearch-raw` và chỉ cung cấp khung hình đã ẩn danh bằng YOLOv8/Gaussian Blur trong `scencesearch-frames`.
 - 📦 **Trích xuất phân đoạn Dataset (Dataset Slicing & JSONL Export):** Cho phép kỹ sư AI gom các phân đoạn tìm được vào khay bản nháp (Dataset Draft) và tải về file manifest `JSONL` kèm gói ảnh `ZIP` chuẩn hóa cho PyTorch / HuggingFace.
 - ⏱️ **Giám sát thời gian thực (In-App APM Tracing):** Tích hợp công cụ Trace Explorer trong Admin với biểu đồ Gantt Waterfall phân tích chi tiết độ trễ từng micro-span (LLM, Embedding, Qdrant, Cache) trên bộ nhớ RAM.
 
 ---
+
+### Ingestion v3 → search
+
+`app/pipelines/ingestion/orchestrator.py` điều phối: tải video → decode/sample → làm mờ và xác minh privacy → SigLIP frame embeddings → semantic scene/boundary refinement → chunk chồng lấn → chọn keyframe → Qwen image embeddings → VLM caption/metadata → pooling và caption embedding → sinh media → ghi vector → publish SQL.
+
+- `scene_chunks`: `siglip` (768d, pooling sample frames), `qwen` (2048d, pooling retained keyframes), `caption` (2048d, Qwen text embedding của caption).
+- Caption vector chỉ tồn tại khi caption khác rỗng và VLM enrichment là `success` hoặc `partial`. Các chunk khác có `caption_embedding_status=not_available`; search caption không tự chuyển sang tìm text.
+- `scene_keyframes`: chỉ có `siglip` (768d). Search mặc định trả segment/chunk. `granularity=frame` chỉ hỗ trợ mode `siglip`.
+- Search chỉ đọc `active_ingestion_run_id` đã publish. Bản staged/superseded không được trả; kiểm tra lại publication trước khi phản hồi.
+
+| UI | API `mode` | Vector chunk được truy vấn |
+|---|---|---|
+| SigLIP | `siglip` | `siglip` |
+| Qwen | `qwen` | `qwen` |
+| Caption embedding | `caption` | `caption` |
+| RRF SigLIP + Qwen | `siglip_qwen_rrf` | `siglip` + `qwen` |
+| RRF Qwen + Caption | `qwen_caption_rrf` | `qwen` + `caption` |
+
+RRF dùng trọng số bằng nhau và `k=60`, sau đó gom về một card/video và giữ các moment khớp. Mỗi tower lấy tối đa 1500 candidate; kết quả và số đếm không phải kiểm kê toàn corpus. Single mode giữ cosine score, không áp floor ngầm; `min_score` chỉ được áp khi người dùng truyền rõ. Chế độ kết hợp yêu cầu cả hai truy vấn thành công, không tự fallback khi model hoặc Qdrant lỗi.
+
+Dữ liệu legacy trong `scenes_local` không có caption embedding hay publication v3. Cần upload/re-ingest qua ingestion mới; việc khôi phục Docker không tự re-ingest hoặc xóa corpus.
 
 ## 3. Architecture & System Topology (Kiến Trúc Hệ Thống)
 
@@ -72,14 +93,14 @@ Trong quá trình phát triển hệ thống xe tự hành (Autonomous Vehicles)
 | Dịch vụ (Service) | Trách nhiệm (Responsibility) | Địa chỉ mặc định |
 | :--- | :--- | :--- |
 | **Frontend** | Giao diện React 19 tìm kiếm, xem video seek tức thời, khay dataset, admin APM & benchmark | http://localhost:5173 (Dev) / Port 80 |
-| **API** | Xác thực JWT, tìm kiếm Tri-Tier, proxy media an toàn, điều phối tác vụ ingest | http://localhost:8000 |
+| **API** | Xác thực JWT, tìm kiếm vector 5 chế độ, proxy media an toàn, điều phối tác vụ ingest | http://localhost:8000 |
 | **Embedding API** | Vi dịch vụ trích xuất đặc trưng đa phương thức Qwen3-VL-2B (2048d) & SigLIP (768d) | http://localhost:8001 |
 | **Worker** | Ingestion pipeline (`pipelines.ingestion`): giải mã video, trích khung hình SSIM, YOLOv8 blur mặt & biển số | Nội bộ (Celery Daemon) |
 | **PostgreSQL** | Lưu trữ người dùng, quyền RBAC, metadata corpus, tác vụ nền, đánh giá RLHF | localhost:5432 / Google Cloud SQL |
 | **Redis** | Bộ nhớ đệm trạng thái tác vụ, message broker Celery và kết quả worker | localhost:6379 / Upstash Redis |
 | **MinIO / GCS** | Lưu trữ phân tách 2-bucket: video gốc (`raw`) và khung hình phái sinh đã ẩn danh (`derived`) | http://localhost:9001 / GCS |
 | **Qdrant** | Lưu trữ và tìm kiếm vector tương đồng cosine kết hợp bộ lọc payload HNSW | http://localhost:6333/dashboard |
-| **LLM Reasoning** | NVIDIA NIM API (`moonshotai/kimi-k3`): phân loại OOD guardrail, sinh mô tả Visual-HyDE | Cloud API |
+| **LLM Reasoning** | OpenAI-compatible API: sinh caption trong ingestion và chat, không tham gia endpoint search | Cloud API |
 
 *Ghi chú cho macOS:* Chạy backing services trong Docker (`make docker-infra`) và chạy API/worker trực tiếp trên host để tận dụng Apple Silicon Metal (MPS) tăng tốc suy luận (ADR-0001).
 
@@ -97,7 +118,7 @@ SceneSearch-P-081/
 |   |-- infrastructure/             # Adapters kết nối: Postgres, Redis, MinIO, Qdrant
 |   |-- pipelines/ingestion/        # Ingest stages: decode, SSIM sample, YOLOv8 anonymize
 |   |-- worker/                     # Celery app và ingest tasks
-|   |-- search/                     # Engine tìm kiếm Tri-Tier, HyDE, catalog, write path
+|   |-- search/                     # Engine tìm kiếm vector 5 chế độ, HyDE, catalog, write path
 |   |-- services/                   # Business logic: auth, admin, dataset export
 |   |-- ml/                         # Encoders: Qwen3-VL, SigLIP, remote client, anonymizer
 |   |-- eval/                       # Retrieval evaluation harness & benchmark runner
@@ -117,8 +138,7 @@ SceneSearch-P-081/
 |-- presentation/                   # Tài liệu thuyết trình, pitch deck và kịch bản demo
 |-- scripts/                        # Utility scripts: seed_users.py, deploy-multicontainer.sh
 |-- cloudrun-multicontainer.yaml    # Khai báo Pod 4 containers trên Google Cloud Run
-|-- docker-compose.yml              # Local development stack
-|-- docker-compose.deploy.yml       # Production stack triển khai local VM
+|-- docker-compose.yml              # Stack source-build duy nhất cho local/GPU VM
 |-- Makefile                        # Quản lý lệnh build, test, run, deploy
 '-- README.md
 ```
@@ -210,7 +230,8 @@ Toàn bộ cấu hình hệ thống được nạp từ biến môi trường v�
 | `QDRANT_COLLECTION` | Tên collection vector (Write path mặc định `scenes`, remote index Viettech là `Scences`) | `scenes` |
 | `AUTH_SECRET_KEY` | Khóa bí mật ký JWT Token | Chuỗi ngẫu nhiên bảo mật |
 | `QWEN_EMBEDDING_URL` | Địa chỉ microservice embedding Qwen3-VL | `http://localhost:8001` |
-| `NVIDIA_API_KEY` | API Key NVIDIA NIM phục vụ LLM Guardrail & Visual-HyDE | `nvapi-...` |
+| `SEARCH_MODE` | Chế độ mặc định trong năm lựa chọn vector | `siglip_qwen_rrf` |
+| `LLM_API_KEY` | API key sinh caption khi ingestion và cho chat | Cấu hình trong `app/.env` |
 
 ---
 
@@ -230,7 +251,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 # 3. Tìm kiếm ngữ nghĩa bằng ngôn ngữ tự nhiên
 curl -X POST http://localhost:8000/api/v1/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "xe cứu hỏa ban đêm bật đèn chớp", "limit": 10}'
+  -d '{"query": "xe cứu hỏa ban đêm bật đèn chớp", "limit": 10, "mode": "qwen_caption_rrf"}'
 
 # 4. Upload video mới vào hàng đợi xử lý (Yêu cầu Admin Token)
 curl -X POST http://localhost:8000/api/v1/ingest/upload \
@@ -361,7 +382,7 @@ Hệ thống được đánh giá thực nghiệm toàn diện trên tập chu�
 | [docs/MVP.md](docs/MVP.md) | Tiêu chí bàn giao MVP, bài kiểm thử chấp nhận và roadmap |
 | [docs/architecture_diagram.md](docs/architecture_diagram.md) | Sơ đồ Mermaid và đặc tả chi tiết kiến trúc microservices |
 | [docs/DOCKER_GCLOUD_GUIDE.md](docs/DOCKER_GCLOUD_GUIDE.md) | Hướng dẫn vận hành Docker và triển khai GCP Cloud Run |
-| [docs/AGENTIC_SEARCH.md](docs/AGENTIC_SEARCH.md) | Thiết kế thuật toán Tri-Tier Agentic Search, Visual-HyDE và Reflection |
+| [docs/AGENTIC_SEARCH.md](docs/AGENTIC_SEARCH.md) | Tài liệu lịch sử; endpoint search hiện dùng năm chế độ vector |
 | [docs/adr/ADR-0001-mps-acceleration.md](docs/adr/ADR-0001-mps-acceleration.md) | Lựa chọn tăng tốc Metal (MPS) trên Apple Silicon |
 | [docs/adr/ADR-0002-two-bucket-storage.md](docs/adr/ADR-0002-two-bucket-storage.md) | Thiết kế 2-bucket lưu trữ bảo vệ quyền riêng tư người dùng |
 | [docs/adr/ADR-0003-anonymization-pipeline.md](docs/adr/ADR-0003-anonymization-pipeline.md) | Quy trình tự động làm mờ khuôn mặt và biển số xe |
